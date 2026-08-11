@@ -7,26 +7,36 @@ import { useEffect, useRef, useState } from "react";
  * into a hidden input so it submits with the surrounding form. The server
  * sanitises the HTML before storage/render, so execCommand output is safe.
  *
- * `value` (when provided) lets a parent push generated HTML into the editor
- * (e.g. after "Generate Content"); local typing stays uncontrolled otherwise.
+ * Two usage modes:
+ *  - Uncontrolled: pass `defaultValue` (seeded once; React never rewrites it).
+ *  - Controlled-ish: pass `value` + `onChange` to let a parent push generated
+ *    HTML in (e.g. after "Generate Content") and read edits back out.
  */
 type Btn = { label: string; title: string; run: () => void };
 
 export function RichTextEditor({
   name,
+  defaultValue,
   value,
   onChange,
   placeholder,
 }: {
   name: string;
+  defaultValue?: string;
   value?: string;
   onChange?: (html: string) => void;
   placeholder?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [html, setHtml] = useState(value ?? "");
+  const [html, setHtml] = useState(value ?? defaultValue ?? "");
 
-  // Push external value into the editable area when it changes from outside.
+  // Seed once from defaultValue (uncontrolled mode).
+  useEffect(() => {
+    if (ref.current && defaultValue && value == null) ref.current.innerHTML = defaultValue;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Push external value into the editable area when it changes (controlled mode).
   useEffect(() => {
     if (ref.current && value != null && value !== ref.current.innerHTML) {
       ref.current.innerHTML = value;
