@@ -83,6 +83,34 @@ export async function deleteArticle(articleId: string) {
   revalidatePath(`/${categoryPathFor(article.category)}/${article.slug}`);
 }
 
+/** Take ALL published articles offline (→ DRAFT). Clears the public site fast. */
+export async function unpublishAllPublished() {
+  await requirePermission("articles:publish");
+  const res = await prisma.article.updateMany({
+    where: { status: PublishStatus.PUBLISHED },
+    data: { status: PublishStatus.DRAFT },
+  });
+  await writeAudit("article.bulk_unpublish", "Article", undefined, { count: res.count });
+  revalidatePath("/admin/articles");
+  revalidatePath("/");
+  return res.count;
+}
+
+/**
+ * Permanently delete every article matching a status filter (or ALL articles
+ * when no valid status is given). Use with care — cascades versions/SEO/links.
+ */
+export async function deleteArticlesByStatus(status?: string) {
+  await requirePermission("articles:publish");
+  const valid = status && (Object.values(PublishStatus) as string[]).includes(status);
+  const where = valid ? { status: status as PublishStatus } : {};
+  const res = await prisma.article.deleteMany({ where });
+  await writeAudit("article.bulk_delete", "Article", undefined, { status: valid ? status : "ALL", count: res.count });
+  revalidatePath("/admin/articles");
+  revalidatePath("/");
+  return res.count;
+}
+
 function categoryPathFor(category: string): string {
   const map: Record<string, string> = {
     JOB: "jobs",

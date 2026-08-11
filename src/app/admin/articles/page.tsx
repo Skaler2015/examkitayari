@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, Badge, SectionTitle, EmptyState } from "@/components/ui";
 import { CATEGORY_META, VERIFICATION_META, categoryPath, formatDate } from "@/lib/format";
 import { PublishStatus, type Prisma } from "@prisma/client";
+import { BulkActions } from "./BulkActions";
 
 const statusVariant: Record<PublishStatus, "success" | "warning" | "danger" | "secondary" | "default"> = {
   DRAFT: "secondary",
@@ -59,6 +60,8 @@ export default async function ArticlesPage({
           );
         })}
       </div>
+
+      <BulkActions statusFilter={isValid ? (statusParam as string) : undefined} />
 
       {articles.length === 0 ? (
         <EmptyState title="No articles" description="No articles match this filter." />
