@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 const COMMANDS: { label: string; href: string; hint?: string }[] = [
   { label: "Dashboard", href: "/admin" },
   { label: "Pending Review", href: "/admin/review" },
-  { label: "Add New Post", href: "/admin/articles/new" },
+  { label: "Add New Post", href: "/admin/posts/new" },
   { label: "Create detailed Job post", href: "/admin/articles/new/job" },
   { label: "Discover from sitemap", href: "/admin/sources/discover" },
   { label: "All Articles", href: "/admin/articles" },

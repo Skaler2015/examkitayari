@@ -41,7 +41,7 @@ export default async function ArticlesPage({
       <SectionTitle
         title={`Articles (${articles.length})`}
         action={
-          <Link href="/admin/articles/new">
+          <Link href="/admin/posts/new">
             <Button size="sm">Add New Post</Button>
           </Link>
         }

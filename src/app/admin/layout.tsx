@@ -11,7 +11,7 @@ import { CommandPalette } from "@/components/admin/CommandPalette";
 const NAV = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/review", label: "Pending Review" },
-  { href: "/admin/articles/new", label: "Add New Post" },
+  { href: "/admin/posts/new", label: "Add New Post" },
   { href: "/admin/sources", label: "Sources" },
   { href: "/admin/automation", label: "Automation" },
   { href: "/admin/ai", label: "AI Provider" },
