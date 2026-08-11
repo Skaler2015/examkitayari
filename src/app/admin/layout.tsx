@@ -5,6 +5,8 @@ import { getSessionUser } from "@/lib/auth/session";
 import { isStaff } from "@/lib/auth/rbac";
 import { logoutAction } from "@/server/actions/auth";
 import { Button } from "@/components/ui";
+import { prisma } from "@/lib/prisma";
+import { CommandPalette } from "@/components/admin/CommandPalette";
 
 const NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -14,6 +16,7 @@ const NAV = [
   { href: "/admin/automation", label: "Automation" },
   { href: "/admin/ai", label: "AI Provider" },
   { href: "/admin/seo", label: "SEO" },
+  { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/articles", label: "Articles" },
   { href: "/admin/audit", label: "Audit Logs" },
 ];
@@ -21,6 +24,11 @@ const NAV = [
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await getSessionUser();
   if (!isStaff(user)) redirect("/login");
+
+  const [pendingCount, sourceIssues] = await Promise.all([
+    prisma.article.count({ where: { status: "PENDING_REVIEW" } }).catch(() => 0),
+    prisma.source.count({ where: { status: { in: ["ERROR", "WARNING", "BLOCKED"] } } }).catch(() => 0),
+  ]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -33,6 +41,23 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             </Link>
           </div>
           <div className="flex items-center gap-3">
+            {/* Notification bell: pending review + source issues */}
+            <Link href="/admin/review" title="Pending review" className="relative grid h-9 w-9 place-items-center rounded-lg border hover:bg-secondary">
+              <span className="text-lg">🔔</span>
+              {pendingCount > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </span>
+              )}
+            </Link>
+            {sourceIssues > 0 && (
+              <Link href="/admin/sources" title="Sources need attention" className="relative grid h-9 w-9 place-items-center rounded-lg border hover:bg-secondary">
+                <span className="text-lg">⚠️</span>
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                  {sourceIssues}
+                </span>
+              </Link>
+            )}
             <span className="hidden text-sm text-muted-foreground sm:inline">{user?.email}</span>
             <form action={logoutAction}>
               <Button type="submit" variant="outline" size="sm">
@@ -74,6 +99,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         {/* Content */}
         <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
       </div>
+
+      <CommandPalette />
     </div>
   );
 }
