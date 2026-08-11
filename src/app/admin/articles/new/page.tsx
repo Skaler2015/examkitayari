@@ -19,6 +19,13 @@ export default function NewPostPage() {
         </p>
       </div>
 
+      <div className="rounded-md border bg-secondary/30 p-3 text-sm">
+        Want to type a <strong>detailed Job post</strong> by hand (vacancy, dates, fee, eligibility, links)?{" "}
+        <Link href="/admin/articles/new/job" className="font-medium text-primary hover:underline">
+          Use the structured Job form →
+        </Link>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Source</CardTitle>
