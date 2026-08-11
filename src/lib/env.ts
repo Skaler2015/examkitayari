@@ -62,6 +62,20 @@ export const env = {
     respectRobots: bool("CRAWLER_RESPECT_ROBOTS", true),
   },
 
+  // Optional scraping-proxy for JS-rendered / bot-protected (WAF) sites.
+  // When configured, HTML/RSS/sitemap fetches route through the provider, which
+  // renders JavaScript and rotates IPs. Binary (PDF) fetches stay direct.
+  scraper: {
+    // "none" | "scraperapi" | "scrapingbee" | "custom"
+    provider: str("SCRAPER_PROVIDER", "none") as "none" | "scraperapi" | "scrapingbee" | "custom",
+    apiKey: str("SCRAPER_API_KEY"),
+    renderJs: bool("SCRAPER_RENDER_JS", true),
+    // For provider="custom": a URL template containing {key} and {url}
+    // (e.g. https://proxy.example.com/?token={key}&url={url}).
+    urlTemplate: str("SCRAPER_URL_TEMPLATE"),
+    timeoutMs: num("SCRAPER_TIMEOUT_MS", 70000),
+  },
+
   automation: {
     enabled: bool("AUTOMATION_ENABLED", true),
     schedulerTickSeconds: num("SCHEDULER_TICK_SECONDS", 60),

@@ -99,6 +99,36 @@ export async function isAllowedByRobots(targetUrl: string): Promise<boolean> {
   return decision;
 }
 
+// --- optional scraping proxy (JS render / WAF bypass) -------------------
+
+/**
+ * If a scraping provider is configured, wrap the target URL in the provider's
+ * fetch endpoint. Returns { url, active }. Keys live only in server env.
+ */
+export function wrapWithScraper(target: string): { url: string; active: boolean } {
+  const s = env.scraper;
+  const enc = encodeURIComponent(target);
+  switch (s.provider) {
+    case "scraperapi":
+      if (!s.apiKey) return { url: target, active: false };
+      return {
+        url: `https://api.scraperapi.com/?api_key=${s.apiKey}&url=${enc}${s.renderJs ? "&render=true" : ""}`,
+        active: true,
+      };
+    case "scrapingbee":
+      if (!s.apiKey) return { url: target, active: false };
+      return {
+        url: `https://app.scrapingbee.com/api/v1/?api_key=${s.apiKey}&url=${enc}&render_js=${s.renderJs ? "true" : "false"}`,
+        active: true,
+      };
+    case "custom":
+      if (!s.urlTemplate) return { url: target, active: false };
+      return { url: s.urlTemplate.replace("{key}", s.apiKey).replace("{url}", enc), active: true };
+    default:
+      return { url: target, active: false };
+  }
+}
+
 // --- fetch with retries, backoff, conditional requests ------------------
 
 export async function politeFetch(
@@ -126,6 +156,13 @@ export async function politeFetch(
     }
   }
 
+  // Route HTML/text fetches through the scraping proxy when configured.
+  // Binary (PDF) fetches always go direct.
+  const { url: fetchUrl, active: scraperUsed } = opts.binary
+    ? { url, active: false }
+    : wrapWithScraper(url);
+  const timeoutMs = scraperUsed ? env.scraper.timeoutMs : env.crawler.timeoutMs;
+
   let attempt = 0;
   let lastError = "";
   while (attempt <= maxRetries) {
@@ -139,13 +176,14 @@ export async function politeFetch(
           : "text/html,application/xhtml+xml,application/xml,application/json;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8",
       };
-      if (opts.conditional?.etag) headers["If-None-Match"] = opts.conditional.etag;
-      if (opts.conditional?.lastModified) headers["If-Modified-Since"] = opts.conditional.lastModified;
+      // Conditional headers only make sense on a direct fetch to the origin.
+      if (!scraperUsed && opts.conditional?.etag) headers["If-None-Match"] = opts.conditional.etag;
+      if (!scraperUsed && opts.conditional?.lastModified) headers["If-Modified-Since"] = opts.conditional.lastModified;
 
-      const res = await fetch(url, {
+      const res = await fetch(fetchUrl, {
         headers,
         redirect: "follow",
-        signal: AbortSignal.timeout(env.crawler.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const responseMs = Date.now() - started;
 
@@ -187,12 +225,15 @@ export async function politeFetch(
         ok: res.ok,
         status: res.status,
         url,
-        finalUrl: res.url || url,
+        // When proxied, res.url points at the scraper endpoint — keep the real
+        // target so relative links resolve correctly.
+        finalUrl: scraperUsed ? url : res.url || url,
         body,
         buffer,
         headers: outHeaders,
         responseMs,
         fromCache: false,
+        error: res.ok ? undefined : `HTTP ${res.status}${scraperUsed ? " (via scraper)" : ""}`,
       };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
