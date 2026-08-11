@@ -666,6 +666,9 @@ model Article {
   title       String
   shortSummary String? @db.Text
   body        String?  @db.Text   // structured HTML/MDX
+  // Optional Hindi translation (AI-generated), shown via a language toggle.
+  titleHi     String?
+  bodyHi      String?  @db.Text
   faq         Json?    // [{q, a}]
   importantPoints String[] @default([])
 
