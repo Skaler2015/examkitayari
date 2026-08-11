@@ -105,5 +105,9 @@ export const env = {
     from: str("EMAIL_FROM", "ExamsKiTayari <no-reply@examskitayari.com>"),
   },
 
+  // IndexNow: instantly notify Bing/Yandex/Naver (and Google reads it) when
+  // content is published/updated. Set any random string as the key.
+  indexNowKey: str("INDEXNOW_KEY"),
+
   logLevel: str("LOG_LEVEL", "info"),
 };
