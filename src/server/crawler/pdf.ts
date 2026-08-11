@@ -3,6 +3,7 @@ import { politeFetch } from "./http";
 import type { CrawlOutcome, DiscoveredItem, SourceAdapter } from "./types";
 import { sha256 } from "@/lib/hash";
 import { logger } from "@/lib/logger";
+import { isOcrEnabled, needsOcr, ocrPdf } from "@/server/ocr";
 
 const log = logger.child("pdf");
 
@@ -12,6 +13,7 @@ export type PdfExtract = {
   pageCount: number;
   text: string;
   metadata: Record<string, unknown>;
+  ocrUsed?: boolean;
 };
 
 /**
@@ -25,27 +27,35 @@ export async function downloadAndExtractPdf(url: string): Promise<PdfExtract | n
     log.warn("PDF download failed", { url, status: res.status });
     return null;
   }
+  const hash = sha256(res.buffer);
+  let text = "";
+  let pageCount = 0;
+  let metadata: Record<string, unknown> = {};
+
   try {
     const pdfParse = (await import("pdf-parse")).default;
     const data = await pdfParse(res.buffer);
-    return {
-      sha256: sha256(res.buffer),
-      fileSize: res.buffer.length,
-      pageCount: data.numpages ?? 0,
-      text: (data.text ?? "").replace(/\s+\n/g, "\n").trim(),
-      metadata: (data.info as Record<string, unknown>) ?? {},
-    };
+    text = (data.text ?? "").replace(/\s+\n/g, "\n").trim();
+    pageCount = data.numpages ?? 0;
+    metadata = (data.info as Record<string, unknown>) ?? {};
   } catch (err) {
     log.error("PDF parse error", { url, err: String(err) });
-    // Even if text extraction fails, we still have the hash + size for change detection.
-    return {
-      sha256: sha256(res.buffer),
-      fileSize: res.buffer.length,
-      pageCount: 0,
-      text: "",
-      metadata: {},
-    };
+    // Fall through with empty text — OCR (if enabled) may still recover it.
   }
+
+  // OCR FALLBACK: scanned/image PDFs yield little or no embedded text.
+  let ocrUsed = false;
+  if (isOcrEnabled() && needsOcr(text, pageCount)) {
+    log.info("PDF text insufficient — running OCR", { url, chars: text.length, pageCount });
+    const ocrText = await ocrPdf(res.buffer);
+    if (ocrText && ocrText.replace(/\s+/g, "").length > text.replace(/\s+/g, "").length) {
+      text = ocrText;
+      ocrUsed = true;
+      metadata.ocr = true;
+    }
+  }
+
+  return { sha256: hash, fileSize: res.buffer.length, pageCount, text, metadata, ocrUsed };
 }
 
 /** A source whose monitorUrl points directly at a PDF. */

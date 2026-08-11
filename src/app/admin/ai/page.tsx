@@ -2,10 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { Card, CardHeader, CardTitle, CardContent, Badge, SectionTitle } from "@/components/ui";
 import { aiStatus } from "@/server/ai/provider";
+import { ocrStatus } from "@/server/ocr";
 import { AiTester } from "./AiTester";
 
 export default function AdminAiPage() {
   const status = aiStatus();
+  const ocr = ocrStatus();
 
   return (
     <div className="space-y-6">
@@ -37,6 +39,30 @@ export default function AdminAiPage() {
           </div>
 
           <AiTester />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>OCR fallback (scanned PDFs)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+            <Row label="Status">
+              {ocr.enabled ? <Badge variant="success">Enabled</Badge> : <Badge variant="secondary">Disabled</Badge>}
+            </Row>
+            <Row label="Provider">{ocr.provider}</Row>
+            <Row label="Language">{ocr.language}</Row>
+            <Row label="API key">
+              {ocr.configured ? <Badge variant="success">Set</Badge> : <Badge variant="warning">Missing</Badge>}
+            </Row>
+          </dl>
+          <p className="text-sm text-muted-foreground">
+            OCR runs automatically only when a PDF has little or no embedded text (i.e. a scanned/image PDF).
+            Configure with <code className="text-foreground">OCR_PROVIDER</code> (<code>ocrspace</code>),{" "}
+            <code className="text-foreground">OCR_API_KEY</code> and{" "}
+            <code className="text-foreground">OCR_LANGUAGE</code> (<code>eng</code>, <code>hin</code>).
+          </p>
         </CardContent>
       </Card>
 
