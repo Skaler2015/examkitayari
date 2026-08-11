@@ -41,10 +41,16 @@ substitutes `{key}` and URL-encodes the target into `{url}`).
 
 ## Notes
 
-- **Credits:** rendering JavaScript uses more credits per request. Set
-  `SCRAPER_RENDER_JS=false` for static sites to save credits. With a ~1,000/mo
-  free tier and a handful of sources on 30–60 min schedules, you stay well
-  within limits; scale the plan as you add sources.
+- **Tough WAFs (403):** Many govt portals block datacenter IPs even through a
+  proxy. If a site still returns `HTTP 403 (via scraper)` with plain proxies,
+  set `SCRAPER_PREMIUM=true` to use premium/residential proxies (costs more
+  credits per request). Try `SCRAPER_RENDER_JS=false` + `SCRAPER_PREMIUM=true`
+  first (WAF bypass without the render surcharge); add render only if the page
+  is JavaScript-built.
+- **Credits:** rendering JavaScript and premium proxies each use more credits
+  per request. With premium enabled, raise each source's crawl frequency (e.g.
+  every 4–6 hours in the source's Edit form) so you stay within a free/small
+  plan. Scale the plan as you add sources.
 - **PDFs** are always fetched directly (not through the proxy).
 - **robots.txt** is still respected on the target site.
 - If a site still fails through the proxy, it may need per-site `parseConfig`
