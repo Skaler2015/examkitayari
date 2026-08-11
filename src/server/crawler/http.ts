@@ -1,5 +1,6 @@
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { assertPublicUrl } from "@/lib/ssrf";
 
 const log = logger.child("http");
 
@@ -150,6 +151,14 @@ export async function politeFetch(
     host = new URL(url).host;
   } catch {
     return emptyResult(url, "Invalid URL");
+  }
+
+  // SSRF guard: never fetch admin-supplied URLs that point at internal hosts.
+  try {
+    await assertPublicUrl(url);
+  } catch (err) {
+    log.warn("SSRF blocked", { url, err: String(err) });
+    return { ...emptyResult(url, err instanceof Error ? err.message : "Blocked host"), status: 998 };
   }
 
   if (opts.checkRobots !== false) {

@@ -40,6 +40,8 @@ export default async function ManageArticlePage({ params }: { params: { id: stri
         <CardContent className="space-y-4">
           <ArticleAdminActions articleId={article.id} status={article.status} liveUrl={liveUrl} />
           <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+            <Row label="Quality score" value={article.qualityScore != null ? `${article.qualityScore} / 100` : "—"} />
+            {article.reviewReason && <Row label="Review reason" value={article.reviewReason} />}
             <Row label="Official source" value={article.officialSource ?? "—"} />
             <Row label="Published" value={formatDateTime(article.publishedAt)} />
             <Row label="Last verified" value={formatDateTime(article.lastVerifiedAt)} />

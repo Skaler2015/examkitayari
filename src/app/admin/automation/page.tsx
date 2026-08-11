@@ -13,6 +13,7 @@ const DEFAULTS: AutomationFlags = {
   autoSeo: true,
   autoSitemap: true,
   notifications: true,
+  minPublishScore: 80,
 };
 
 const SCOPES: { scope: string; label: string; warn: boolean }[] = [
@@ -49,6 +50,7 @@ export default async function AutomationPage() {
                 autoSeo: row.autoSeo,
                 autoSitemap: row.autoSitemap,
                 notifications: row.notifications,
+                minPublishScore: row.minPublishScore ?? 80,
               }
             : DEFAULTS;
 

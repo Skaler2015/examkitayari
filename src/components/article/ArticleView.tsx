@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Card, CardContent } from "@/components/ui";
 import { ProvenanceBar } from "@/components/shared/ProvenanceBar";
 import { CATEGORY_META, categoryPath, formatDate } from "@/lib/format";
+import { sanitizeHtml } from "@/lib/sanitize";
 import type { getArticleBySlug } from "@/server/queries";
 
 type FullArticle = NonNullable<Awaited<ReturnType<typeof getArticleBySlug>>>;
@@ -173,7 +174,7 @@ export function ArticleView({ article }: { article: FullArticle }) {
         <section className="mt-6">
           <div
             className="prose-article max-w-none"
-            dangerouslySetInnerHTML={{ __html: article.body ?? "" }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(article.body) }}
           />
         </section>
       )}

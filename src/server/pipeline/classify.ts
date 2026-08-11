@@ -68,6 +68,11 @@ const RULES: Rule[] = [
     ],
   },
   {
+    category: ContentCategory.CURRENT_AFFAIRS,
+    weight: 2,
+    patterns: [/current\s*affairs/i, /daily\s*(gk|dose|current)/i, /\bgk\s*update/i],
+  },
+  {
     category: ContentCategory.NOTICE,
     weight: 1,
     patterns: [/notice/i, /important\s*information/i, /corrigendum/i, /press\s*note/i],

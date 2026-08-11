@@ -14,9 +14,12 @@ export type AutomationFlags = {
   autoSeo: boolean;
   autoSitemap: boolean;
   notifications: boolean;
+  minPublishScore?: number;
 };
 
-const FLAG_LABELS: { key: keyof AutomationFlags; label: string }[] = [
+type BoolFlagKey = Exclude<keyof AutomationFlags, "minPublishScore">;
+
+const FLAG_LABELS: { key: BoolFlagKey; label: string }[] = [
   { key: "sourceMonitoring", label: "Source monitoring" },
   { key: "aiProcessing", label: "AI processing" },
   { key: "autoClassification", label: "Auto classification" },
@@ -59,10 +62,23 @@ export default function AutomationForm({
         ))}
       </div>
 
+      <label className="flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Min. auto-publish quality score</span>
+        <input
+          type="number"
+          name="minPublishScore"
+          min={0}
+          max={100}
+          defaultValue={values.minPublishScore ?? 80}
+          className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
+        />
+        <span className="text-xs text-muted-foreground">/ 100</span>
+      </label>
+
       {warnAutoPublish && (
         <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-          Note: Jobs, Admit Cards, Results, Answer Keys &amp; Notices default to manual review for safety.
-          Enable auto-publish only if you trust extraction for this category.
+          With auto-publish ON, only items scoring ≥ the threshold (with required fields, a valid official link, and no
+          source conflict) publish automatically — everything else goes to review.
         </p>
       )}
 
