@@ -6,6 +6,7 @@ import { buildInternalLinks } from "./linking";
 import { notifyForArticle } from "@/server/notifications";
 import { getEffectiveSettings } from "@/server/automation/settings";
 import { articleJsonLd, faqJsonLd } from "@/server/seo/schema";
+import { isIndexNowEnabled, submitToIndexNow } from "@/server/seo/indexnow";
 import { truncate } from "@/lib/utils";
 
 const log = logger.child("publish");
@@ -116,6 +117,11 @@ export async function publishArticle(articleId: string, reviewerId?: string): Pr
     if (settings.notifications) {
       await notifyForArticle(fresh);
     }
+  }
+
+  // Instant indexing (IndexNow) — best-effort, non-blocking.
+  if (isIndexNowEnabled()) {
+    void submitToIndexNow([`${env.siteUrl.replace(/\/$/, "")}${path}`]).catch(() => {});
   }
 
   log.info("Published article", { slug: article.slug, category: article.category });
