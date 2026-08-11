@@ -73,11 +73,15 @@ and open `/admin`. **Change the admin password / delete SETUP_TOKEN afterwards.*
    Use exactly the values Vercel shows for your project.
 3. Wait for DNS to propagate (minutes to a few hours). Vercel issues SSL automatically.
 
-## Step 5 — Drive the monitoring pipeline (external cron)
+## Step 5 — Drive the monitoring pipeline (cron)
 
-Vercel's free plan runs cron only **once per day** (a daily tick is already
-configured in `vercel.json` as a safety net). For frequent monitoring, use a free
-external cron:
+`vercel.json` runs `/api/cron/tick` **every 5 minutes**. On the **Pro** plan this
+works out of the box (Vercel sends the `CRON_SECRET` bearer automatically), so no
+external service is needed — the pipeline runs itself.
+
+**On the free (Hobby) plan** Vercel cron is limited to **once per day**. If you're
+on Hobby, either change the schedule in `vercel.json` to `0 2 * * *`, or add a free
+external cron for frequent monitoring:
 
 1. Sign up at <https://cron-job.org> (free).
 2. Create a cronjob:
