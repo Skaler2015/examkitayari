@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { Card, Badge, SectionTitle, EmptyState } from "@/components/ui";
+import { Card, Badge, SectionTitle, EmptyState, Button } from "@/components/ui";
 import { CATEGORY_META, VERIFICATION_META, categoryPath, formatDate } from "@/lib/format";
 import { PublishStatus, type Prisma } from "@prisma/client";
 import { BulkActions } from "./BulkActions";
@@ -38,7 +38,14 @@ export default async function ArticlesPage({
 
   return (
     <div className="space-y-6">
-      <SectionTitle title={`Articles (${articles.length})`} />
+      <SectionTitle
+        title={`Articles (${articles.length})`}
+        action={
+          <Link href="/admin/articles/new">
+            <Button size="sm">Add New Post</Button>
+          </Link>
+        }
+      />
 
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2">

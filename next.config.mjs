@@ -14,6 +14,8 @@ const nextConfig = {
   },
   experimental: {
     serverComponentsExternalPackages: ["pdf-parse", "cheerio"],
+    // Allow PDF/image uploads through server actions (manual "add post").
+    serverActions: { bodySizeLimit: "16mb" },
   },
   async headers() {
     return [

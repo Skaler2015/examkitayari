@@ -206,8 +206,8 @@ export async function processSourceItem(itemId: string): Promise<ProcessingStage
 async function gatherContent(
   item: SourceItem & { source: unknown }
 ): Promise<{ text: string; title: string; documentId: string | null }> {
-  // Already have raw content (e.g. RSS body / PDF source).
-  if (item.rawContent && item.rawContent.length > 200) {
+  // Already have raw content (PDF source / manual entry / OCR text).
+  if (item.rawContent && item.rawContent.trim().length > 40) {
     return { text: item.rawContent, title: item.title ?? "", documentId: item.documentId };
   }
 

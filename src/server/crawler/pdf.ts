@@ -27,27 +27,32 @@ export async function downloadAndExtractPdf(url: string): Promise<PdfExtract | n
     log.warn("PDF download failed", { url, status: res.status });
     return null;
   }
-  const hash = sha256(res.buffer);
+  return extractPdfBuffer(res.buffer);
+}
+
+/** Extract text (with OCR fallback) from a PDF buffer — used by crawl + manual upload. */
+export async function extractPdfBuffer(buffer: Buffer): Promise<PdfExtract> {
+  const hash = sha256(buffer);
   let text = "";
   let pageCount = 0;
   let metadata: Record<string, unknown> = {};
 
   try {
     const pdfParse = (await import("pdf-parse")).default;
-    const data = await pdfParse(res.buffer);
+    const data = await pdfParse(buffer);
     text = (data.text ?? "").replace(/\s+\n/g, "\n").trim();
     pageCount = data.numpages ?? 0;
     metadata = (data.info as Record<string, unknown>) ?? {};
   } catch (err) {
-    log.error("PDF parse error", { url, err: String(err) });
+    log.error("PDF parse error", { err: String(err) });
     // Fall through with empty text — OCR (if enabled) may still recover it.
   }
 
   // OCR FALLBACK: scanned/image PDFs yield little or no embedded text.
   let ocrUsed = false;
   if (isOcrEnabled() && needsOcr(text, pageCount)) {
-    log.info("PDF text insufficient — running OCR", { url, chars: text.length, pageCount });
-    const ocrText = await ocrPdf(res.buffer);
+    log.info("PDF text insufficient — running OCR", { chars: text.length, pageCount });
+    const ocrText = await ocrPdf(buffer);
     if (ocrText && ocrText.replace(/\s+/g, "").length > text.replace(/\s+/g, "").length) {
       text = ocrText;
       ocrUsed = true;
@@ -55,7 +60,7 @@ export async function downloadAndExtractPdf(url: string): Promise<PdfExtract | n
     }
   }
 
-  return { sha256: hash, fileSize: res.buffer.length, pageCount, text, metadata, ocrUsed };
+  return { sha256: hash, fileSize: buffer.length, pageCount, text, metadata, ocrUsed };
 }
 
 /** A source whose monitorUrl points directly at a PDF. */
