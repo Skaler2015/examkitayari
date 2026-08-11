@@ -12,6 +12,7 @@ import { uniqueSlug } from "@/lib/utils";
 import { fetchPageText } from "@/server/crawler/html";
 import { downloadAndExtractPdf } from "@/server/crawler/pdf";
 import { classify } from "./classify";
+import { classifyWithAi } from "@/server/ai/classify";
 import { extractFor } from "./extract";
 import { findDuplicate } from "./dedupe";
 import { generateArticle } from "@/server/ai/content";
@@ -43,11 +44,20 @@ export async function processSourceItem(itemId: string): Promise<ProcessingStage
       data: { stage: ProcessingStage.FETCHED, rawContent: text.slice(0, 50000), documentId },
     });
 
-    // 2. CLASSIFY.
+    // 2. CLASSIFY — rule-based first, then an optional AI refinement layer
+    //    that only kicks in when the rule result is low-confidence.
     const settings0 = await getEffectiveSettings();
-    const cls = settings0.autoClassification
+    let cls: { category: ContentCategory; score: number } = settings0.autoClassification
       ? classify(fullText)
-      : { category: ContentCategory.OTHER, score: 0, matched: [] };
+      : { category: ContentCategory.OTHER, score: 0 };
+
+    if (settings0.autoClassification && settings0.aiProcessing && cls.score < 0.5) {
+      const aiCls = await classifyWithAi(fullText);
+      if (aiCls && aiCls.score >= cls.score) {
+        cls = aiCls;
+        log.info("AI refined classification", { item: item.url, category: aiCls.category, score: aiCls.score });
+      }
+    }
 
     await prisma.sourceItem.update({
       where: { id: item.id },
