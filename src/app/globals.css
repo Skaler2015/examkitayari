@@ -82,6 +82,20 @@ body {
   border-collapse: collapse;
   margin: 1rem 0;
 }
+
+/* Breaking-news ticker */
+@keyframes ekt-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ekt-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: ekt-marquee 40s linear infinite;
+}
+.ekt-marquee:hover {
+  animation-play-state: paused;
+}
 .prose-article th,
 .prose-article td {
   border: 1px solid hsl(var(--border));
