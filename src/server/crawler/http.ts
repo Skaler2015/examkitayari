@@ -112,13 +112,17 @@ export function wrapWithScraper(target: string): { url: string; active: boolean 
     case "scraperapi":
       if (!s.apiKey) return { url: target, active: false };
       return {
-        url: `https://api.scraperapi.com/?api_key=${s.apiKey}&url=${enc}${s.renderJs ? "&render=true" : ""}`,
+        url:
+          `https://api.scraperapi.com/?api_key=${s.apiKey}&url=${enc}` +
+          `${s.renderJs ? "&render=true" : ""}${s.premium ? "&premium=true" : ""}`,
         active: true,
       };
     case "scrapingbee":
       if (!s.apiKey) return { url: target, active: false };
       return {
-        url: `https://app.scrapingbee.com/api/v1/?api_key=${s.apiKey}&url=${enc}&render_js=${s.renderJs ? "true" : "false"}`,
+        url:
+          `https://app.scrapingbee.com/api/v1/?api_key=${s.apiKey}&url=${enc}` +
+          `&render_js=${s.renderJs ? "true" : "false"}${s.premium ? "&premium_proxy=true" : ""}`,
         active: true,
       };
     case "custom":

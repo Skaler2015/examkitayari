@@ -70,6 +70,9 @@ export const env = {
     provider: str("SCRAPER_PROVIDER", "none") as "none" | "scraperapi" | "scrapingbee" | "custom",
     apiKey: str("SCRAPER_API_KEY"),
     renderJs: bool("SCRAPER_RENDER_JS", true),
+    // Premium/residential proxies — needed to bypass tough WAFs (e.g. many
+    // govt sites that 403 datacenter IPs). Costs more credits per request.
+    premium: bool("SCRAPER_PREMIUM", false),
     // For provider="custom": a URL template containing {key} and {url}
     // (e.g. https://proxy.example.com/?token={key}&url={url}).
     urlTemplate: str("SCRAPER_URL_TEMPLATE"),
