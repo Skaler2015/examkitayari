@@ -1,0 +1,65 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { env } from "@/lib/env";
+import { enqueue } from "@/server/queue";
+import { runJob } from "@/server/queue/runner";
+import { claimNextJob, completeJob } from "@/server/queue";
+import { isAutomationEnabled } from "@/server/automation/settings";
+import { SourceStatus } from "@prisma/client";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+/**
+ * Serverless-friendly cron endpoint. Call this on a schedule (e.g. Vercel Cron,
+ * GitHub Actions, or `curl`) when you can't run the long-lived worker process.
+ * It (1) enqueues due source crawls and (2) drains a bounded number of jobs.
+ * Protected by the AUTH_SECRET bearer token.
+ */
+export async function POST(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (auth !== `Bearer ${env.authSecret}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const enabled = env.automation.enabled && (await isAutomationEnabled());
+  let enqueued = 0;
+  if (enabled) {
+    const now = new Date();
+    const due = await prisma.source.findMany({
+      where: {
+        isActive: true,
+        status: { notIn: [SourceStatus.DISABLED, SourceStatus.BLOCKED] },
+        OR: [{ nextCrawlAt: null }, { nextCrawlAt: { lte: now } }],
+      },
+      orderBy: [{ priority: "asc" }, { nextCrawlAt: "asc" }],
+      take: 25,
+    });
+    for (const s of due) {
+      await enqueue("CRAWL_SOURCE", { sourceId: s.id }, { dedupeKey: `crawl:${s.id}` });
+      await prisma.source.update({
+        where: { id: s.id },
+        data: { nextCrawlAt: new Date(now.getTime() + s.frequencyMinutes * 60 * 1000) },
+      });
+      enqueued++;
+    }
+  }
+
+  // Drain up to N jobs within the request budget.
+  let processed = 0;
+  const budgetMs = 45000;
+  const started = Date.now();
+  while (processed < 20 && Date.now() - started < budgetMs) {
+    const job = await claimNextJob();
+    if (!job) break;
+    try {
+      await runJob(job);
+      await completeJob(job.id, true);
+    } catch (err) {
+      await completeJob(job.id, false, err instanceof Error ? err.message : String(err));
+    }
+    processed++;
+  }
+
+  return NextResponse.json({ ok: true, enabled, enqueued, processed });
+}

@@ -1,0 +1,23 @@
+# Optional: drive the automation pipeline on a schedule without a long-running
+# worker. Set repo secrets SITE_URL and CRON_BEARER (= your AUTH_SECRET).
+# Prefer the dedicated worker/scheduler processes for high-volume production.
+name: Automation Cron
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pipeline tick
+        run: |
+          if [ -z "${{ secrets.SITE_URL }}" ] || [ -z "${{ secrets.CRON_BEARER }}" ]; then
+            echo "SITE_URL / CRON_BEARER secrets not configured — skipping."
+            exit 0
+          fi
+          curl -sS -X POST "${{ secrets.SITE_URL }}/api/cron/tick" \
+            -H "Authorization: Bearer ${{ secrets.CRON_BEARER }}" \
+            --max-time 60 | tee /dev/stderr
