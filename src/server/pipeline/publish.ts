@@ -87,26 +87,23 @@ export async function publishArticle(articleId: string, reviewerId?: string): Pr
       faqJsonLd(faq),
     ].filter(Boolean);
 
+    const ogImage = `${env.siteUrl.replace(/\/$/, "")}/api/og?title=${encodeURIComponent(
+      truncate(article.title, 120)
+    )}&category=${article.category}`;
+
+    const seoData = {
+      title: truncate(article.title, 65),
+      description: article.shortSummary ?? truncate(article.title, 160),
+      canonical: `${env.siteUrl}${path}`,
+      ogTitle: article.title,
+      ogDescription: article.shortSummary,
+      ogImage,
+      jsonLd,
+    };
     await prisma.seoMetadata.upsert({
       where: { path },
-      create: {
-        articleId,
-        path,
-        title: truncate(article.title, 65),
-        description: article.shortSummary ?? truncate(article.title, 160),
-        canonical: `${env.siteUrl}${path}`,
-        ogTitle: article.title,
-        ogDescription: article.shortSummary,
-        jsonLd,
-      },
-      update: {
-        title: truncate(article.title, 65),
-        description: article.shortSummary ?? truncate(article.title, 160),
-        canonical: `${env.siteUrl}${path}`,
-        ogTitle: article.title,
-        ogDescription: article.shortSummary,
-        jsonLd,
-      },
+      create: { articleId, path, ...seoData },
+      update: seoData,
     });
   }
 
@@ -125,4 +122,24 @@ export async function publishArticle(articleId: string, reviewerId?: string): Pr
   }
 
   log.info("Published article", { slug: article.slug, category: article.category });
+}
+
+/** Publish any SCHEDULED articles whose time has arrived. Returns the count. */
+export async function publishDueScheduled(): Promise<number> {
+  const due = await prisma.article.findMany({
+    where: { status: PublishStatus.SCHEDULED, scheduledFor: { lte: new Date() } },
+    select: { id: true },
+    take: 50,
+  });
+  let n = 0;
+  for (const a of due) {
+    try {
+      await publishArticle(a.id);
+      n++;
+    } catch (err) {
+      log.error("Scheduled publish failed", { id: a.id, err: String(err) });
+    }
+  }
+  if (n) log.info("Published scheduled articles", { count: n });
+  return n;
 }

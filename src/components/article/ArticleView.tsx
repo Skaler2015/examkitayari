@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, CardContent } from "@/components/ui";
 import { ProvenanceBar } from "@/components/shared/ProvenanceBar";
+import { ShareButtons } from "@/components/shared/ShareButtons";
 import { CATEGORY_META, categoryPath, formatDate } from "@/lib/format";
 import { sanitizeHtml } from "@/lib/sanitize";
 import type { getArticleBySlug } from "@/server/queries";
@@ -134,6 +135,10 @@ export function ArticleView({ article }: { article: FullArticle }) {
           lastVerifiedAt={article.lastVerifiedAt}
           aiGenerated={article.aiGenerated}
         />
+      </div>
+
+      <div className="mt-4">
+        <ShareButtons title={article.title} />
       </div>
 
       {/* Key details */}

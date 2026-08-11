@@ -122,6 +122,35 @@ function categoryPathFor(category: string): string {
   return map[category] ?? "updates";
 }
 
+/** Schedule an article to auto-publish at a future time (or publish now if past). */
+export async function scheduleArticle(articleId: string, whenIso: string) {
+  await requirePermission("articles:publish");
+  const when = new Date(whenIso);
+  if (isNaN(when.getTime())) return;
+  const user = await getSessionUser();
+  if (when.getTime() <= Date.now()) {
+    await publishArticle(articleId, user?.id);
+  } else {
+    await prisma.article.update({
+      where: { id: articleId },
+      data: { status: PublishStatus.SCHEDULED, scheduledFor: when },
+    });
+  }
+  await writeAudit("article.schedule", "Article", articleId, { when: when.toISOString() });
+  revalidatePath(`/admin/articles/${articleId}`);
+  revalidatePath("/admin/articles");
+}
+
+export async function unscheduleArticle(articleId: string) {
+  await requirePermission("articles:publish");
+  await prisma.article.update({
+    where: { id: articleId },
+    data: { status: PublishStatus.DRAFT, scheduledFor: null },
+  });
+  await writeAudit("article.unschedule", "Article", articleId);
+  revalidatePath(`/admin/articles/${articleId}`);
+}
+
 export async function saveArticleEdits(_prev: { error?: string; ok?: boolean }, formData: FormData) {
   await requirePermission("articles:write");
   const parsed = editSchema.safeParse({
