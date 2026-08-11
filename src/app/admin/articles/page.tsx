@@ -78,22 +78,24 @@ export default async function ArticlesPage({
               {articles.map((a) => {
                 const cat = CATEGORY_META[a.category];
                 const ver = VERIFICATION_META[a.verificationStatus];
-                const titleNode =
-                  a.status === PublishStatus.PUBLISHED ? (
-                    <Link
-                      href={categoryPath(a.category, a.slug)}
-                      className="font-medium text-primary hover:underline"
-                    >
+                const titleNode = (
+                  <div className="flex items-center gap-2">
+                    <Link href={`/admin/articles/${a.id}`} className="font-medium hover:underline">
                       {a.title}
                     </Link>
-                  ) : (
-                    <Link
-                      href={`/admin/review/${a.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {a.title}
-                    </Link>
-                  );
+                    {a.status === PublishStatus.PUBLISHED && (
+                      <a
+                        href={categoryPath(a.category, a.slug)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline"
+                        title="View live"
+                      >
+                        ↗
+                      </a>
+                    )}
+                  </div>
+                );
                 return (
                   <tr key={a.id} className="border-b transition-colors hover:bg-secondary/40">
                     <td className="p-3">{titleNode}</td>
