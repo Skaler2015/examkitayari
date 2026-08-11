@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge, Card, CardContent } from "@/components/ui";
 import { ProvenanceBar } from "@/components/shared/ProvenanceBar";
 import { ShareButtons } from "@/components/shared/ShareButtons";
+import { BilingualBody } from "@/components/article/BilingualBody";
 import { CATEGORY_META, categoryPath, formatDate } from "@/lib/format";
 import { sanitizeHtml } from "@/lib/sanitize";
 import type { getArticleBySlug } from "@/server/queries";
@@ -174,12 +175,12 @@ export function ArticleView({ article }: { article: FullArticle }) {
         </section>
       )}
 
-      {/* Body */}
+      {/* Body (with English / हिंदी toggle when a translation exists) */}
       {article.body && (
         <section className="mt-6">
-          <div
-            className="prose-article max-w-none"
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(article.body) }}
+          <BilingualBody
+            enHtml={sanitizeHtml(article.body)}
+            hiHtml={article.bodyHi ? sanitizeHtml(article.bodyHi) : null}
           />
         </section>
       )}

@@ -7,6 +7,8 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { getSessionUser } from "@/lib/auth/session";
 import { PublishStatus, VerificationStatus, ProcessingStage } from "@prisma/client";
 import { publishArticle } from "@/server/pipeline/publish";
+import { translateToHindi } from "@/server/ai/translate";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { writeAudit } from "./audit";
 
 const editSchema = z.object({
@@ -120,6 +122,25 @@ function categoryPathFor(category: string): string {
     NOTICE: "notices",
   };
   return map[category] ?? "updates";
+}
+
+/** AI-translate an article to Hindi and store it (shown via a language toggle). */
+export async function translateArticleToHindi(articleId: string): Promise<{ ok: boolean; error?: string }> {
+  await requirePermission("articles:write");
+  const article = await prisma.article.findUnique({
+    where: { id: articleId },
+    select: { title: true, body: true },
+  });
+  if (!article) return { ok: false, error: "Article not found." };
+  const result = await translateToHindi(article.title, article.body ?? "");
+  if (!result) return { ok: false, error: "AI is disabled or translation failed. Enable AI in Admin → AI Provider." };
+  await prisma.article.update({
+    where: { id: articleId },
+    data: { titleHi: result.titleHi, bodyHi: sanitizeHtml(result.bodyHi) },
+  });
+  await writeAudit("article.translate_hi", "Article", articleId);
+  revalidatePath(`/admin/articles/${articleId}`);
+  return { ok: true };
 }
 
 /** Schedule an article to auto-publish at a future time (or publish now if past). */

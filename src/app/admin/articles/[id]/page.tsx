@@ -8,6 +8,7 @@ import { CATEGORY_META, VERIFICATION_META, categoryPath, formatDateTime } from "
 import EditForm from "@/app/admin/review/[id]/EditForm";
 import { ArticleAdminActions } from "./ArticleAdminActions";
 import { ScheduleForm } from "./ScheduleForm";
+import { TranslateButton } from "./TranslateButton";
 
 export default async function ManageArticlePage({ params }: { params: { id: string } }) {
   const article = await prisma.article.findUnique({
@@ -40,6 +41,7 @@ export default async function ManageArticlePage({ params }: { params: { id: stri
         </CardHeader>
         <CardContent className="space-y-4">
           <ArticleAdminActions articleId={article.id} status={article.status} liveUrl={liveUrl} />
+          <TranslateButton articleId={article.id} hasHindi={Boolean(article.bodyHi)} />
           {article.status !== "PUBLISHED" && (
             <div className="rounded-md border p-3">
               <p className="mb-2 text-sm font-medium">Schedule publish</p>
