@@ -11,7 +11,9 @@ import { extractPdfBuffer } from "@/server/crawler/pdf";
 import { ocrImage, isOcrEnabled } from "@/server/ocr";
 import { processSourceItem } from "@/server/pipeline/process";
 import { enqueue } from "@/server/queue";
-import { normalizeUrl } from "@/lib/utils";
+import { normalizeUrl, uniqueSlug } from "@/lib/utils";
+import { buildArticleContent } from "@/server/templates/article";
+import { VerificationStatus, PublishStatus } from "@prisma/client";
 import { writeAudit } from "./audit";
 
 async function getOrCreateSource(name: string, monitorUrl: string, type: SourceType) {
@@ -181,5 +183,108 @@ export async function createManualPost(_prev: ManualState, formData: FormData): 
   if (!article) {
     return { error: `Processed but no draft was created (stage: ${stage}). It may be a duplicate.` };
   }
+  redirect(`/admin/articles/${article.id}`);
+}
+
+// --- 3. Structured manual Job post (fill fields → detailed draft) --------
+
+export type JobState = { error?: string };
+
+function toDate(v: FormDataEntryValue | null): Date | null {
+  if (!v) return null;
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d;
+}
+function str(v: FormDataEntryValue | null): string | null {
+  const s = (v as string)?.trim();
+  return s ? s : null;
+}
+
+export async function createStructuredJob(_prev: JobState, formData: FormData): Promise<JobState> {
+  await requirePermission("articles:write");
+
+  const title = str(formData.get("title"));
+  if (!title) return { error: "Title is required." };
+
+  const vacancyRaw = str(formData.get("vacancyCount"));
+  const vacancyCount = vacancyRaw ? Number(vacancyRaw.replace(/[,\s]/g, "")) : null;
+
+  const notificationUrl = str(formData.get("officialNotificationUrl"));
+  const data: Record<string, unknown> = {
+    organization: str(formData.get("organization")),
+    recruitmentName: str(formData.get("recruitmentName")),
+    postName: str(formData.get("postName")),
+    vacancyCount: Number.isFinite(vacancyCount) ? vacancyCount : null,
+    vacancyDetail: str(formData.get("vacancyDetail")),
+    qualification: str(formData.get("qualification")),
+    ageLimit: str(formData.get("ageLimit")),
+    ageRelaxation: str(formData.get("ageRelaxation")),
+    applicationStart: toDate(formData.get("applicationStart")),
+    applicationEnd: toDate(formData.get("applicationEnd")),
+    applicationFee: str(formData.get("applicationFee")),
+    salary: str(formData.get("salary")),
+    selectionProcess: str(formData.get("selectionProcess")),
+    examDate: toDate(formData.get("examDate")),
+    applyOnlineUrl: str(formData.get("applyOnlineUrl")),
+    officialNotificationUrl: notificationUrl,
+    officialWebsite: str(formData.get("officialWebsite")),
+    importantInstructions: str(formData.get("importantInstructions")),
+  };
+
+  const content = buildArticleContent(ContentCategory.JOB, title, data, notificationUrl ?? undefined);
+
+  const source = await getOrCreateSource("Manual Entry", "https://examskitayari.com/manual", SourceType.HTML_PAGE);
+  const slug = await uniqueSlug(title, async (s) => (await prisma.article.count({ where: { slug: s } })) > 0);
+
+  const job = await prisma.job.create({
+    data: {
+      slug: await uniqueSlug(title, async (s) => (await prisma.job.count({ where: { slug: s } })) > 0),
+      title,
+      recruitmentName: data.recruitmentName as string | null,
+      postName: data.postName as string | null,
+      vacancyCount: data.vacancyCount as number | null,
+      vacancyDetail: data.vacancyDetail as string | null,
+      qualification: data.qualification as string | null,
+      ageLimit: data.ageLimit as string | null,
+      ageRelaxation: data.ageRelaxation as string | null,
+      applicationStart: data.applicationStart as Date | null,
+      applicationEnd: data.applicationEnd as Date | null,
+      applicationFee: data.applicationFee as string | null,
+      salary: data.salary as string | null,
+      selectionProcess: data.selectionProcess as string | null,
+      examDate: data.examDate as Date | null,
+      applyOnlineUrl: data.applyOnlineUrl as string | null,
+      officialNotificationUrl: notificationUrl,
+      officialWebsite: data.officialWebsite as string | null,
+      importantInstructions: data.importantInstructions as string | null,
+      sourceId: source.id,
+      sourceUrl: notificationUrl,
+      verificationStatus: VerificationStatus.HUMAN_VERIFIED,
+      lastVerifiedAt: new Date(),
+    },
+  });
+
+  const article = await prisma.article.create({
+    data: {
+      slug,
+      category: ContentCategory.JOB,
+      title,
+      shortSummary: `${title} — official details, important dates and direct links.`.slice(0, 240),
+      body: content.body,
+      faq: content.faq,
+      importantPoints: content.importantPoints,
+      aiGenerated: false,
+      officialSource: (data.organization as string) || "Manual (admin)",
+      officialSourceUrl: notificationUrl,
+      verificationStatus: VerificationStatus.HUMAN_VERIFIED,
+      status: PublishStatus.PENDING_REVIEW,
+      jobId: job.id,
+    },
+  });
+  await prisma.articleSource.create({
+    data: { articleId: article.id, sourceName: (data.organization as string) || "Manual (admin)", sourceUrl: notificationUrl || "manual", isOfficial: Boolean(notificationUrl) },
+  });
+  await writeAudit("ingest.manual_job", "Article", article.id);
+
   redirect(`/admin/articles/${article.id}`);
 }
