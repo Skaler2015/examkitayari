@@ -25,9 +25,14 @@ export default async function SourcesPage() {
       <SectionTitle
         title={`Sources (${sources.length})`}
         action={
-          <Link href="/admin/sources/new">
-            <Button size="sm">Add Source</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/admin/sources/discover">
+              <Button size="sm" variant="outline">Discover from sitemap</Button>
+            </Link>
+            <Link href="/admin/sources/new">
+              <Button size="sm">Add Source</Button>
+            </Link>
+          </div>
         }
       />
 

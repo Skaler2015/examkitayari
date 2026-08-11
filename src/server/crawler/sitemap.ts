@@ -32,6 +32,39 @@ function extractSitemapIndex(parsed: unknown): string[] {
   return out;
 }
 
+/**
+ * Fetch a sitemap (following one level of sitemap-index) and return its URL
+ * entries with lastmod dates. Used by the admin "discover from sitemap" tool.
+ */
+export async function fetchSitemapEntries(url: string, maxChildren = 10): Promise<{ loc: string; lastmod?: Date }[]> {
+  const res = await politeFetch(url, {});
+  if (!res.ok || !res.body) return [];
+  let parsed: unknown;
+  try {
+    parsed = xml.parse(res.body);
+  } catch {
+    return [];
+  }
+  const out: { loc: string; lastmod?: Date }[] = [];
+  const push = (u: SitemapUrl) => {
+    const d = u.lastmod ? new Date(u.lastmod) : undefined;
+    out.push({ loc: String(u.loc), lastmod: d && !isNaN(d.getTime()) ? d : undefined });
+  };
+  extractUrls(parsed).forEach(push);
+
+  for (const child of extractSitemapIndex(parsed).slice(0, maxChildren)) {
+    const childRes = await politeFetch(child, {});
+    if (childRes.ok && childRes.body) {
+      try {
+        extractUrls(xml.parse(childRes.body)).forEach(push);
+      } catch {
+        /* ignore malformed child */
+      }
+    }
+  }
+  return out;
+}
+
 export const sitemapAdapter: SourceAdapter = {
   async crawl(source: Source): Promise<CrawlOutcome> {
     const target = source.sitemapUrl || source.monitorUrl;

@@ -26,15 +26,29 @@ export function needsOcr(text: string, pageCount: number): boolean {
   return dense < threshold;
 }
 
+export type OcrKind = { filetype: string; mime: string; filename: string };
+
+const PDF_KIND: OcrKind = { filetype: "PDF", mime: "application/pdf", filename: "document.pdf" };
+
 /**
  * OCR a PDF buffer. Returns extracted text, or null when OCR is disabled or the
  * provider fails — callers keep the (possibly empty) pdf-parse text as fallback.
  */
 export async function ocrPdf(buffer: Buffer): Promise<string | null> {
+  return ocrBuffer(buffer, PDF_KIND);
+}
+
+/** OCR an image buffer (PNG/JPG/etc.) — used by manual "add post from image". */
+export async function ocrImage(buffer: Buffer, mime: string): Promise<string | null> {
+  const ext = mime.includes("png") ? "png" : mime.includes("gif") ? "gif" : "jpg";
+  return ocrBuffer(buffer, { filetype: ext.toUpperCase(), mime, filename: `image.${ext}` });
+}
+
+export async function ocrBuffer(buffer: Buffer, kind: OcrKind): Promise<string | null> {
   if (!isOcrEnabled()) return null;
   try {
-    if (env.ocr.provider === "ocrspace") return await ocrSpace(buffer);
-    if (env.ocr.provider === "custom") return await ocrCustom(buffer);
+    if (env.ocr.provider === "ocrspace") return await ocrSpace(buffer, kind);
+    if (env.ocr.provider === "custom") return await ocrCustom(buffer, kind);
   } catch (err) {
     log.error("OCR failed", { err: String(err) });
     return null;
@@ -42,14 +56,14 @@ export async function ocrPdf(buffer: Buffer): Promise<string | null> {
   return null;
 }
 
-async function ocrSpace(buffer: Buffer): Promise<string | null> {
+async function ocrSpace(buffer: Buffer, kind: OcrKind): Promise<string | null> {
   const form = new FormData();
   form.append("apikey", env.ocr.apiKey);
-  form.append("filetype", "PDF");
+  form.append("filetype", kind.filetype);
   form.append("OCREngine", "2");
   form.append("scale", "true");
   form.append("language", env.ocr.language || "eng");
-  form.append("file", new Blob([new Uint8Array(buffer)], { type: "application/pdf" }), "document.pdf");
+  form.append("file", new Blob([new Uint8Array(buffer)], { type: kind.mime }), kind.filename);
 
   const res = await fetch("https://api.ocr.space/parse/image", {
     method: "POST",
@@ -73,11 +87,11 @@ async function ocrSpace(buffer: Buffer): Promise<string | null> {
   return text || null;
 }
 
-async function ocrCustom(buffer: Buffer): Promise<string | null> {
+async function ocrCustom(buffer: Buffer, kind: OcrKind): Promise<string | null> {
   const form = new FormData();
   if (env.ocr.apiKey) form.append("apikey", env.ocr.apiKey);
   form.append("language", env.ocr.language || "eng");
-  form.append("file", new Blob([new Uint8Array(buffer)], { type: "application/pdf" }), "document.pdf");
+  form.append("file", new Blob([new Uint8Array(buffer)], { type: kind.mime }), kind.filename);
   const res = await fetch(env.ocr.endpoint, {
     method: "POST",
     body: form,
