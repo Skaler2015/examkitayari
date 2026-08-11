@@ -79,6 +79,19 @@ export const env = {
     timeoutMs: num("SCRAPER_TIMEOUT_MS", 70000),
   },
 
+  // Optional OCR fallback for scanned PDFs (image-only, no embedded text).
+  // Provider-agnostic HTTP OCR. Runs ONLY when pdf-parse yields too little text.
+  ocr: {
+    // "none" | "ocrspace" | "custom"
+    provider: str("OCR_PROVIDER", "none") as "none" | "ocrspace" | "custom",
+    apiKey: str("OCR_API_KEY"),
+    // OCR.space language code(s): eng, hin, or "eng,hin" behaviour depends on engine.
+    language: str("OCR_LANGUAGE", "eng"),
+    // For provider="custom": POST endpoint that accepts the PDF and returns text.
+    endpoint: str("OCR_ENDPOINT"),
+    timeoutMs: num("OCR_TIMEOUT_MS", 60000),
+  },
+
   automation: {
     enabled: bool("AUTOMATION_ENABLED", true),
     schedulerTickSeconds: num("SCHEDULER_TICK_SECONDS", 60),
