@@ -5,6 +5,7 @@ import { enqueue } from "@/server/queue";
 import { runJob } from "@/server/queue/runner";
 import { claimNextJob, completeJob } from "@/server/queue";
 import { isAutomationEnabled } from "@/server/automation/settings";
+import { publishDueScheduled } from "@/server/pipeline/publish";
 import { SourceStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,9 @@ async function runTick(req: NextRequest) {
   if (!(await authorize(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // Publish any due scheduled articles first (independent of automation switch).
+  const scheduledPublished = await publishDueScheduled().catch(() => 0);
 
   const enabled = env.automation.enabled && (await isAutomationEnabled());
   let enqueued = 0;
@@ -71,7 +75,7 @@ async function runTick(req: NextRequest) {
     processed++;
   }
 
-  return NextResponse.json({ ok: true, enabled, enqueued, processed });
+  return NextResponse.json({ ok: true, enabled, enqueued, processed, scheduledPublished });
 }
 
 // Vercel Cron issues GET requests; external cron / manual triggers may use POST.

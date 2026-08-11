@@ -671,6 +671,8 @@ model Article {
 
   status      PublishStatus @default(DRAFT)
   publishedAt DateTime?
+  // When set (and status SCHEDULED), the cron publishes the article at this time.
+  scheduledFor DateTime?
 
   // Automation: 0..100 quality score and, when routed to review, the reason.
   qualityScore Int?

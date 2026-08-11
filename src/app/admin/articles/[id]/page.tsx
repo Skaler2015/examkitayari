@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent, Badge } from "@/components/ui
 import { CATEGORY_META, VERIFICATION_META, categoryPath, formatDateTime } from "@/lib/format";
 import EditForm from "@/app/admin/review/[id]/EditForm";
 import { ArticleAdminActions } from "./ArticleAdminActions";
+import { ScheduleForm } from "./ScheduleForm";
 
 export default async function ManageArticlePage({ params }: { params: { id: string } }) {
   const article = await prisma.article.findUnique({
@@ -39,6 +40,15 @@ export default async function ManageArticlePage({ params }: { params: { id: stri
         </CardHeader>
         <CardContent className="space-y-4">
           <ArticleAdminActions articleId={article.id} status={article.status} liveUrl={liveUrl} />
+          {article.status !== "PUBLISHED" && (
+            <div className="rounded-md border p-3">
+              <p className="mb-2 text-sm font-medium">Schedule publish</p>
+              <ScheduleForm
+                articleId={article.id}
+                scheduledFor={article.scheduledFor ? article.scheduledFor.toISOString() : null}
+              />
+            </div>
+          )}
           <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
             <Row label="Quality score" value={article.qualityScore != null ? `${article.qualityScore} / 100` : "—"} />
             {article.reviewReason && <Row label="Review reason" value={article.reviewReason} />}
