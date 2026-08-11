@@ -8,7 +8,9 @@ import { isAutomationEnabled } from "@/server/automation/settings";
 import { SourceStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Allow headroom for scraping-proxy requests that render JavaScript (slow).
+// 300s is the Vercel Pro function limit; harmless on other hosts.
+export const maxDuration = 300;
 
 /**
  * Serverless-friendly cron endpoint. Call this on a schedule (e.g. Vercel Cron,
@@ -53,11 +55,11 @@ async function runTick(req: NextRequest) {
     }
   }
 
-  // Drain up to N jobs within the request budget.
+  // Drain jobs within the request budget (kept under maxDuration).
   let processed = 0;
-  const budgetMs = 45000;
+  const budgetMs = 250000;
   const started = Date.now();
-  while (processed < 20 && Date.now() - started < budgetMs) {
+  while (processed < 30 && Date.now() - started < budgetMs) {
     const job = await claimNextJob();
     if (!job) break;
     try {
