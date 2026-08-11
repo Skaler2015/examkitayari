@@ -143,6 +143,22 @@ export async function saveArticleEdits(_prev: { error?: string; ok?: boolean }, 
   });
   await prisma.reviewAction.create({ data: { articleId: parsed.data.articleId, reviewerId: user?.id, action: "EDIT" } });
   await writeAudit("review.edit", "Article", parsed.data.articleId);
+
+  // One-click "Save & Publish".
+  const publishAfter = formData.get("publishAfter") === "on";
+  if (publishAfter) {
+    await prisma.article.update({
+      where: { id: parsed.data.articleId },
+      data: { verificationStatus: VerificationStatus.HUMAN_VERIFIED, lastVerifiedAt: new Date() },
+    });
+    await publishArticle(parsed.data.articleId, user?.id);
+    await prisma.reviewAction.create({ data: { articleId: parsed.data.articleId, reviewerId: user?.id, action: "APPROVE" } });
+    await writeAudit("review.approve", "Article", parsed.data.articleId);
+    revalidatePath("/admin/review");
+    revalidatePath("/admin/articles");
+  }
+
   revalidatePath(`/admin/review/${parsed.data.articleId}`);
+  revalidatePath(`/admin/articles/${parsed.data.articleId}`);
   return { ok: true };
 }
