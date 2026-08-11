@@ -1,139 +1,92 @@
-import Link from "next/link";
-import type { Article, ContentCategory } from "@prisma/client";
-import { Badge, Card, CardContent, EmptyState } from "@/components/ui";
-import { CATEGORY_META, categoryPath, timeAgo } from "@/lib/format";
-import { getLatestByCategory } from "@/server/queries";
-
 export const dynamic = "force-dynamic";
 
-const QUICK_LINKS: { label: string; href: string; emoji: string }[] = [
-  { label: "Latest Jobs", href: "/jobs", emoji: "💼" },
-  { label: "Admit Card", href: "/admit-card", emoji: "🎫" },
-  { label: "Results", href: "/results", emoji: "🏆" },
-  { label: "Answer Key", href: "/answer-key", emoji: "🔑" },
-  { label: "Exams", href: "/exams", emoji: "📝" },
-  { label: "Syllabus", href: "/syllabus", emoji: "📚" },
-  { label: "Mock Tests", href: "/mock-tests", emoji: "🧪" },
-  { label: "Current Affairs", href: "/current-affairs", emoji: "🗞️" },
-];
+import Link from "next/link";
+import { ContentCategory } from "@prisma/client";
+import { getLatestByCategory } from "@/server/queries";
+import { CategoryGrid } from "@/components/site/CategoryGrid";
+import { SectionTable, type Row } from "@/components/site/SectionTable";
+import { ImportantLinksBox } from "@/components/site/ImportantLinksBox";
 
-function LatestColumn({
-  category,
-  title,
-  items,
-}: {
-  category: ContentCategory;
-  title: string;
-  items: Article[];
-}) {
-  const meta = CATEGORY_META[category];
-  return (
-    <Card>
-      <CardContent className="pt-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-bold tracking-tight">{title}</h2>
-          <Link href={`/${meta.path}`} className="text-xs font-medium text-primary hover:underline">
-            View all
-          </Link>
-        </div>
-        {items.length === 0 ? (
-          <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-            The monitoring engine will populate verified updates here soon.
-          </p>
-        ) : (
-          <ul className="divide-y">
-            {items.map((a) => (
-              <li key={a.id} className="py-2.5 first:pt-0 last:pb-0">
-                <Link href={categoryPath(a.category, a.slug)} className="group block">
-                  <p className="text-sm font-medium leading-snug group-hover:text-primary">{a.title}</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <Badge variant={meta.badge}>{meta.label}</Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {timeAgo(a.publishedAt ?? a.createdAt)}
-                    </span>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
+function toRows(items: { slug: string; title: string; category: ContentCategory; publishedAt: Date | null }[]): Row[] {
+  return items.map((i) => ({ slug: i.slug, title: i.title, category: i.category, publishedAt: i.publishedAt }));
 }
 
 export default async function HomePage() {
-  const [jobs, admitCards, results, answerKeys] = await Promise.all([
-    getLatestByCategory("JOB", 6),
-    getLatestByCategory("ADMIT_CARD", 6),
-    getLatestByCategory("RESULT", 6),
-    getLatestByCategory("ANSWER_KEY", 6),
+  const [jobs, results, admit, answer, notices] = await Promise.all([
+    getLatestByCategory(ContentCategory.JOB, 8),
+    getLatestByCategory(ContentCategory.RESULT, 8),
+    getLatestByCategory(ContentCategory.ADMIT_CARD, 8),
+    getLatestByCategory(ContentCategory.ANSWER_KEY, 8),
+    getLatestByCategory(ContentCategory.NOTICE, 6),
   ]);
 
-  const allEmpty =
-    jobs.length === 0 && admitCards.length === 0 && results.length === 0 && answerKeys.length === 0;
+  const empty = jobs.length + results.length + admit.length + answer.length === 0;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {/* Hero */}
-      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-accent/10 px-5 py-10 text-center sm:px-10 sm:py-14">
-        <h1 className="mx-auto max-w-3xl text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl">
-          Prepare Smarter. <span className="text-primary">Crack Your Exam.</span>
+      <section className="rounded-2xl border bg-gradient-to-br from-primary/10 via-background to-accent/10 p-6 text-center sm:p-10">
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-4xl">
+          Prepare Smarter. <span className="text-accent">Crack Your Exam.</span>
         </h1>
-        <p className="mx-auto mt-3 max-w-2xl text-muted-foreground sm:text-lg">
-          Verified government job, admit card, result and answer key updates — compiled directly from official
-          sources, with source links you can trust.
+        <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
+          Latest government jobs, admit cards, results and answer keys — sourced from official websites with verified
+          source links.
         </p>
-        <form action="/search" className="mx-auto mt-6 flex max-w-xl gap-2">
+        <form action="/search" className="mx-auto mt-5 flex max-w-xl gap-2">
           <input
             name="q"
-            placeholder="Search Exam, Job, Result, Admit Card..."
-            className="h-12 w-full rounded-md border border-input bg-background px-4 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Search Exam, Job, Result, Admit Card…"
+            className="h-11 flex-1 rounded-md border border-input bg-card px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <button
-            type="submit"
-            className="h-12 shrink-0 rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-          >
+          <button className="h-11 rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
             Search
           </button>
         </form>
       </section>
 
-      {/* Quick links */}
-      <section>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {QUICK_LINKS.map((q) => (
-            <Link
-              key={q.href}
-              href={q.href}
-              className="flex flex-col items-center gap-2 rounded-xl border bg-card p-4 text-center transition-colors hover:border-primary/40 hover:bg-secondary/40"
-            >
-              <span className="text-2xl" aria-hidden>
-                {q.emoji}
-              </span>
-              <span className="text-sm font-semibold">{q.label}</span>
-            </Link>
-          ))}
+      {/* Category grid */}
+      <CategoryGrid />
+
+      {empty ? (
+        <div className="rounded-xl border border-dashed p-10 text-center">
+          <p className="font-medium">Updates will appear here automatically.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The monitoring engine is discovering official updates. New jobs, results and admit cards will show up shortly.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Classic three-column layout */}
+          <div className="grid gap-5 lg:grid-cols-3">
+            <SectionTable title="Latest Jobs" tone="primary" items={toRows(jobs)} viewAllHref="/jobs" />
+            <SectionTable title="Results" tone="green" items={toRows(results)} viewAllHref="/results" />
+            <SectionTable title="Admit Cards" tone="accent" items={toRows(admit)} viewAllHref="/admit-card" />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-3">
+            <SectionTable title="Answer Keys" tone="purple" items={toRows(answer)} viewAllHref="/answer-key" />
+            <SectionTable title="Notices" tone="primary" items={toRows(notices)} viewAllHref="/notices" />
+            <ImportantLinksBox />
+          </div>
+        </>
+      )}
+
+      {/* CTA strip */}
+      <section className="flex flex-col items-center justify-between gap-3 rounded-xl border bg-secondary/40 p-5 sm:flex-row">
+        <div>
+          <p className="font-semibold">Never miss an update</p>
+          <p className="text-sm text-muted-foreground">Create a free account, follow your exams and get notified.</p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/register" className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+            Create account
+          </Link>
+          <Link href="/exams" className="rounded-md border px-4 py-2 text-sm font-semibold">
+            Browse exams
+          </Link>
         </div>
       </section>
-
-      {/* Latest updates */}
-      {allEmpty ? (
-        <EmptyState
-          title="Fresh updates are on the way"
-          description="Our monitoring engine continuously watches official exam and recruitment websites. Verified updates will appear here automatically."
-        />
-      ) : (
-        <section>
-          <h2 className="mb-4 text-xl font-bold tracking-tight">Latest Updates</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <LatestColumn category="JOB" title="Latest Jobs" items={jobs} />
-            <LatestColumn category="ADMIT_CARD" title="Admit Cards" items={admitCards} />
-            <LatestColumn category="RESULT" title="Results" items={results} />
-            <LatestColumn category="ANSWER_KEY" title="Answer Keys" items={answerKeys} />
-          </div>
-        </section>
-      )}
     </div>
   );
 }
