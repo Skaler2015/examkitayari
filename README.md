@@ -169,8 +169,9 @@ ADMIN LOGIN → Dashboard → New Updates → Review (source vs extracted vs dra
 
 ## Further docs
 
+- [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md) — **one-click-ish deploy to Vercel + Neon with auto-deploy on every push** (recommended; keeps your domain)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — modules, data model, pipeline internals
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — production deployment, scaling, cron, storage, backups
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker/VPS deployment, scaling, cron, storage, backups
 - [`docs/API.md`](docs/API.md) — HTTP endpoints and server actions
 
 ---

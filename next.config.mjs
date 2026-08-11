@@ -2,7 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  output: "standalone",
+  // Standalone output is only needed for the Docker image. On Vercel we let the
+  // platform handle output, so it is gated behind BUILD_STANDALONE=true.
+  output: process.env.BUILD_STANDALONE === "true" ? "standalone" : undefined,
   eslint: {
     // Linting runs in CI; do not block production builds on lint.
     ignoreDuringBuilds: true,

@@ -16,9 +16,17 @@ export const maxDuration = 60;
  * It (1) enqueues due source crawls and (2) drains a bounded number of jobs.
  * Protected by the AUTH_SECRET bearer token.
  */
-export async function POST(req: NextRequest) {
-  const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${env.authSecret}`) {
+async function authorize(req: NextRequest): Promise<boolean> {
+  const auth = req.headers.get("authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "");
+  // Accept either the app AUTH_SECRET or a dedicated CRON_SECRET (which Vercel
+  // Cron sends automatically as a Bearer token when configured).
+  const accepted = [env.authSecret, process.env.CRON_SECRET].filter(Boolean) as string[];
+  return accepted.includes(token);
+}
+
+async function runTick(req: NextRequest) {
+  if (!(await authorize(req))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -62,4 +70,13 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, enabled, enqueued, processed });
+}
+
+// Vercel Cron issues GET requests; external cron / manual triggers may use POST.
+export async function GET(req: NextRequest) {
+  return runTick(req);
+}
+
+export async function POST(req: NextRequest) {
+  return runTick(req);
 }
