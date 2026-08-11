@@ -57,6 +57,43 @@ export async function markDuplicate(articleId: string) {
   revalidatePath("/admin/review");
 }
 
+/** Take a published article offline (back to DRAFT). Removes it from the public site. */
+export async function unpublishArticle(articleId: string) {
+  await requirePermission("articles:publish");
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article) return;
+  await prisma.article.update({ where: { id: articleId }, data: { status: PublishStatus.DRAFT } });
+  await writeAudit("article.unpublish", "Article", articleId);
+  revalidatePath("/admin/articles");
+  revalidatePath(`/admin/articles/${articleId}`);
+  revalidatePath("/");
+  // Refresh the public category page it was on.
+  revalidatePath(`/${categoryPathFor(article.category)}/${article.slug}`);
+}
+
+/** Permanently delete an article (and its versions/SEO/links via cascade). */
+export async function deleteArticle(articleId: string) {
+  await requirePermission("articles:publish");
+  const article = await prisma.article.findUnique({ where: { id: articleId } });
+  if (!article) return;
+  await prisma.article.delete({ where: { id: articleId } });
+  await writeAudit("article.delete", "Article", articleId, { title: article.title });
+  revalidatePath("/admin/articles");
+  revalidatePath("/");
+  revalidatePath(`/${categoryPathFor(article.category)}/${article.slug}`);
+}
+
+function categoryPathFor(category: string): string {
+  const map: Record<string, string> = {
+    JOB: "jobs",
+    ADMIT_CARD: "admit-card",
+    RESULT: "results",
+    ANSWER_KEY: "answer-key",
+    NOTICE: "notices",
+  };
+  return map[category] ?? "updates";
+}
+
 export async function saveArticleEdits(_prev: { error?: string; ok?: boolean }, formData: FormData) {
   await requirePermission("articles:write");
   const parsed = editSchema.safeParse({
