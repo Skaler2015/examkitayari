@@ -1,6 +1,7 @@
 import { Header } from "@/components/site/Header";
 import { Footer } from "@/components/site/Footer";
 import { BreakingBar } from "@/components/site/BreakingBar";
+import { PageViewTracker } from "@/components/site/PageViewTracker";
 
 // The breaking ticker reads live data in the shared layout, so public pages
 // render dynamically.
@@ -13,6 +14,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <BreakingBar />
       <main className="container py-6 min-h-[60vh]">{children}</main>
       <Footer />
+      <PageViewTracker />
     </>
   );
 }

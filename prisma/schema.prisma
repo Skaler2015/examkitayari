@@ -1028,6 +1028,17 @@ model AutomationJob {
   @@index([type])
 }
 
+// Lightweight first-party page-view analytics (public pages).
+model PageView {
+  id        String   @id @default(cuid())
+  path      String
+  referrer  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([path])
+}
+
 model AutomationLog {
   id       String   @id @default(cuid())
   jobId    String?
