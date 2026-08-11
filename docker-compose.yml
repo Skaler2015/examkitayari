@@ -1,0 +1,88 @@
+# ==========================================================================
+# ExamsKiTayari — full production-like stack:
+#   db (PostgreSQL) + redis + web + worker + scheduler
+# Run: docker compose up -d --build
+# First run: docker compose exec web npx prisma migrate deploy && \
+#            docker compose exec web npm run db:seed
+# ==========================================================================
+# Shared env overrides so app containers reach the compose db/redis services
+# regardless of what host is set in .env (which targets localhost for dev).
+x-app-env: &app-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-examskitayari}:${POSTGRES_PASSWORD:-examskitayari}@db:5432/${POSTGRES_DB:-examskitayari}?schema=public
+  REDIS_URL: redis://redis:6379
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-examskitayari}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-examskitayari}
+      POSTGRES_DB: ${POSTGRES_DB:-examskitayari}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-examskitayari}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - storage:/app/storage
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - storage:/app/storage
+
+  scheduler:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "scheduler"]
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:

@@ -1,0 +1,1019 @@
+// ExamsKiTayari.com — Database schema (PostgreSQL)
+// Every important record carries: createdAt, updatedAt, and (where relevant)
+// sourceId / sourceUrl / verificationStatus for full provenance & auditability.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// ENUMS
+// ===========================================================================
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  REVIEWER
+  STUDENT
+}
+
+enum ContentCategory {
+  JOB
+  ADMIT_CARD
+  RESULT
+  ANSWER_KEY
+  EXAM_DATE
+  CUTOFF
+  MERIT_LIST
+  NOTICE
+  SYLLABUS
+  EXAM_PATTERN
+  COUNSELLING
+  DOCUMENT_VERIFICATION
+  OTHER
+}
+
+enum SourceType {
+  HTML_PAGE
+  RSS
+  SITEMAP
+  PDF
+  JSON_API
+  XML
+  OFFICIAL_RESULT_PAGE
+  OFFICIAL_RECRUITMENT_PAGE
+}
+
+enum SourceStatus {
+  ACTIVE
+  WARNING
+  ERROR
+  BLOCKED
+  DISABLED
+}
+
+enum Priority {
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum CrawlStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  SKIPPED
+}
+
+enum ChangeType {
+  NEW
+  UPDATED
+  UNCHANGED
+  REMOVED
+  ERROR
+}
+
+// Processing lifecycle of a discovered item as it moves through the pipeline.
+enum ProcessingStage {
+  DISCOVERED
+  FETCHED
+  PARSED
+  CLASSIFIED
+  EXTRACTED
+  DEDUPED
+  AI_PROCESSED
+  VALIDATED
+  PENDING_REVIEW
+  PUBLISHED
+  REJECTED
+  DUPLICATE
+  FAILED
+}
+
+// Trust level of a piece of information.
+enum VerificationStatus {
+  UNVERIFIED
+  AUTO_EXTRACTED
+  AI_ASSISTED
+  HUMAN_VERIFIED
+  SOURCE_CONFLICT
+  NOT_AVAILABLE
+}
+
+enum PublishStatus {
+  DRAFT
+  PENDING_REVIEW
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+  REJECTED
+}
+
+enum NotificationChannel {
+  WEB
+  EMAIL
+  PUSH
+  TELEGRAM
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  READ
+}
+
+enum AutomationJobStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+// ===========================================================================
+// AUTH / RBAC
+// ===========================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String
+  role          UserRole  @default(STUDENT)
+  isActive      Boolean   @default(true)
+  emailVerified DateTime?
+  lastLoginAt   DateTime?
+
+  // Student profile bits
+  phone         String?
+  state         String?
+
+  sessions      Session[]
+  bookmarks     Bookmark[]
+  follows       ExamFollow[]
+  attempts      UserAttempt[]
+  performance   UserPerformance[]
+  notifications Notification[]
+  reviewsMade   ReviewAction[]
+  auditLogs     AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ===========================================================================
+// MASTER DATA
+// ===========================================================================
+
+model Organization {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  shortName    String?
+  slug         String   @unique
+  website      String?
+  logoUrl      String?
+  state        String?
+  description  String?
+
+  sources      Source[]
+  exams        Exam[]
+  jobs         Job[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model State {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  code      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String          @id @default(cuid())
+  key         ContentCategory @unique
+  label       String
+  slug        String          @unique
+  description String?
+  // Per-category automation defaults (overridable in AutomationSetting)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+// ===========================================================================
+// OFFICIAL SOURCE MONITORING ENGINE
+// ===========================================================================
+
+model Source {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  state          String?
+
+  websiteUrl     String?
+  monitorUrl     String        // primary URL that gets polled
+  type           SourceType
+  rssUrl         String?
+  sitemapUrl     String?
+  listingUrl     String?
+
+  // Scheduling
+  frequencyMinutes Int         @default(30)
+  priority         Priority    @default(NORMAL)
+  status           SourceStatus @default(ACTIVE)
+  isActive         Boolean     @default(true)
+
+  // Discovery rules
+  keywords            String[]  @default([])
+  allowedUrlPatterns  String[]  @default([])
+  excludedUrlPatterns String[]  @default([])
+  // Which content categories this source is expected to produce
+  monitorCategories   ContentCategory[] @default([])
+
+  // Parsing hints (CSS selectors etc.) stored as JSON for flexibility
+  parseConfig      Json?
+  // Optional encrypted credentials reference (never store raw secrets)
+  credentialRef    String?
+
+  // Health / telemetry (denormalised for dashboard speed)
+  lastCheckedAt        DateTime?
+  lastSuccessAt        DateTime?
+  nextCrawlAt          DateTime?
+  lastHttpStatus       Int?
+  lastResponseMs       Int?
+  lastItemsFound       Int?      @default(0)
+  consecutiveFailures  Int       @default(0)
+  lastError            String?
+
+  crawls   SourceCrawl[]
+  items    SourceItem[]
+  changes  SourceChange[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([isActive, nextCrawlAt])
+  @@index([priority])
+}
+
+model SourceCrawl {
+  id            String      @id @default(cuid())
+  sourceId      String
+  source        Source      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  status        CrawlStatus
+  httpStatus    Int?
+  responseMs    Int?
+  itemsFound    Int         @default(0)
+  itemsNew      Int         @default(0)
+  itemsUpdated  Int         @default(0)
+  error         String?
+  startedAt     DateTime    @default(now())
+  finishedAt    DateTime?
+
+  changes       SourceChange[]
+
+  @@index([sourceId, startedAt])
+  @@index([status])
+}
+
+// A single discovered unit of content from a source (a link, RSS item, PDF...)
+model SourceItem {
+  id            String   @id @default(cuid())
+  sourceId      String
+  source        Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  externalId    String?  // RSS guid / API id
+  url           String   // the item's own URL
+  canonicalUrl  String?
+  title         String?
+  summary       String?
+  publishedAt   DateTime?
+  itemUpdatedAt DateTime?
+
+  // Fingerprints for change & duplicate detection
+  contentHash   String?
+  domFingerprint String?
+
+  // Pipeline state
+  stage         ProcessingStage    @default(DISCOVERED)
+  category      ContentCategory?
+  categoryScore Float?
+  verification  VerificationStatus @default(UNVERIFIED)
+
+  // Raw + extracted payloads
+  rawContent    String?  @db.Text
+  extractedData Json?
+
+  documentId    String?
+  document      Document? @relation(fields: [documentId], references: [id])
+
+  // Links to produced records
+  article       Article?
+  job           Job?
+  admitCard     AdmitCard?
+  result        Result?
+  answerKey     AnswerKey?
+
+  changes       SourceChange[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sourceId, url])
+  @@index([stage])
+  @@index([category])
+  @@index([contentHash])
+}
+
+model SourceChange {
+  id         String      @id @default(cuid())
+  sourceId   String
+  source     Source      @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  crawlId    String?
+  crawl      SourceCrawl? @relation(fields: [crawlId], references: [id], onDelete: SetNull)
+  itemId     String?
+  item       SourceItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  type       ChangeType
+  url        String?
+  field      String?     // what changed
+  oldValue   String?     @db.Text
+  newValue   String?     @db.Text
+  diff       String?     @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([sourceId, createdAt])
+  @@index([type])
+}
+
+// ===========================================================================
+// DOCUMENTS (PDFs etc.)
+// ===========================================================================
+
+model Document {
+  id          String   @id @default(cuid())
+  sourceUrl   String   // original official URL
+  storageKey  String?  // key in object storage
+  mimeType    String?
+  sha256      String   @unique
+  fileSize    Int?
+  pageCount   Int?
+  extractedText String? @db.Text
+  metadata    Json?
+
+  versions    DocumentVersion[]
+  items       SourceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sha256])
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sha256     String
+  fileSize   Int?
+  pageCount  Int?
+  storageKey String?
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+}
+
+// ===========================================================================
+// EXAM DATABASE
+// ===========================================================================
+
+model Exam {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  state          String?
+  qualification  String?
+  ageCriteria    String?
+  subjects       String[] @default([])
+  examPattern    String?  @db.Text
+  syllabus       String?  @db.Text
+
+  officialWebsite String?
+  applicationUrl  String?
+  resultUrl       String?
+  admitCardUrl    String?
+  answerKeyUrl    String?
+
+  description    String?  @db.Text
+
+  jobs        Job[]
+  admitCards  AdmitCard[]
+  results     Result[]
+  answerKeys  AnswerKey[]
+  examDates   ExamDate[]
+  cutoffs     Cutoff[]
+  meritLists  MeritList[]
+  mockTests   MockTest[]
+  questions   Question[]
+  follows     ExamFollow[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+}
+
+// ===========================================================================
+// CORE CONTENT RECORDS
+// Every record carries provenance: sourceId, sourceUrl, verificationStatus,
+// lastVerifiedAt.
+// ===========================================================================
+
+model Job {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  title          String
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  examId         String?
+  exam           Exam?    @relation(fields: [examId], references: [id])
+
+  recruitmentName String?
+  postName        String?
+  vacancyCount    Int?
+  vacancyDetail   String?  @db.Text
+  qualification   String?  @db.Text
+  ageLimit        String?
+  ageRelaxation   String?  @db.Text
+  applicationStart DateTime?
+  applicationEnd   DateTime?
+  applicationFee   String?  @db.Text
+  selectionProcess String?  @db.Text
+  salary           String?
+  examDate         DateTime?
+  importantDates   Json?    // [{label, date}]
+  gender           String?
+  state            String?
+  category         String?
+  importantInstructions String? @db.Text
+
+  officialNotificationUrl String?
+  applyOnlineUrl          String?
+  officialWebsite         String?
+
+  // Provenance
+  sourceItemId String?     @unique
+  sourceItem   SourceItem? @relation(fields: [sourceItemId], references: [id])
+  sourceId     String?
+  sourceUrl    String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  lastVerifiedAt DateTime?
+
+  article   Article?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+  @@index([applicationEnd])
+}
+
+model AdmitCard {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  examId      String?
+  exam        Exam?    @relation(fields: [examId], references: [id])
+
+  examName        String?
+  post            String?
+  releaseDate     DateTime?
+  examDate        DateTime?
+  examShift       String?
+  examCityInfo    String?  @db.Text
+  downloadUrl     String?
+
+  sourceItemId String?     @unique
+  sourceItem   SourceItem? @relation(fields: [sourceItemId], references: [id])
+  sourceId     String?
+  sourceUrl    String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  lastVerifiedAt DateTime?
+
+  article   Article?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Result {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  examId      String?
+  exam        Exam?    @relation(fields: [examId], references: [id])
+
+  examName    String?
+  releaseDate DateTime?
+  resultType  String?
+  resultUrl   String?
+  scorecardUrl String?
+
+  sourceItemId String?     @unique
+  sourceItem   SourceItem? @relation(fields: [sourceItemId], references: [id])
+  sourceId     String?
+  sourceUrl    String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  lastVerifiedAt DateTime?
+
+  article   Article?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AnswerKey {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  examId      String?
+  exam        Exam?    @relation(fields: [examId], references: [id])
+
+  examName        String?
+  examDate        DateTime?
+  keyType         String?  // provisional / final
+  isFinal         Boolean  @default(false)
+  objectionStart  DateTime?
+  objectionEnd    DateTime?
+  answerKeyUrl    String?
+  responseSheetUrl String?
+
+  sourceItemId String?     @unique
+  sourceItem   SourceItem? @relation(fields: [sourceItemId], references: [id])
+  sourceId     String?
+  sourceUrl    String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  lastVerifiedAt DateTime?
+
+  article   Article?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ExamDate {
+  id        String   @id @default(cuid())
+  examId    String?
+  exam      Exam?    @relation(fields: [examId], references: [id])
+  label     String
+  date      DateTime?
+  note      String?
+  sourceUrl String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Cutoff {
+  id        String   @id @default(cuid())
+  examId    String?
+  exam      Exam?    @relation(fields: [examId], references: [id])
+  title     String
+  year      Int?
+  data      Json?    // category-wise cutoffs
+  sourceUrl String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MeritList {
+  id        String   @id @default(cuid())
+  examId    String?
+  exam      Exam?    @relation(fields: [examId], references: [id])
+  title     String
+  fileUrl   String?
+  sourceUrl String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notice {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  body      String?  @db.Text
+  fileUrl   String?
+  sourceItemId String? @unique
+  sourceId  String?
+  sourceUrl String?
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  lastVerifiedAt DateTime?
+  article   Article?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ===========================================================================
+// ARTICLES (published, SEO-optimised, AI-assisted content)
+// ===========================================================================
+
+model Article {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  category    ContentCategory
+  title       String
+  shortSummary String? @db.Text
+  body        String?  @db.Text   // structured HTML/MDX
+  faq         Json?    // [{q, a}]
+  importantPoints String[] @default([])
+
+  status      PublishStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  // Provenance & trust (displayed on the page)
+  officialSource   String?
+  officialSourceUrl String?
+  sourceItemId String?     @unique
+  sourceItem   SourceItem? @relation(fields: [sourceItemId], references: [id])
+  verificationStatus VerificationStatus @default(AUTO_EXTRACTED)
+  lastVerifiedAt DateTime?
+  aiGenerated  Boolean @default(false)
+
+  // 1:1 links to the underlying typed record
+  jobId       String?  @unique
+  job         Job?     @relation(fields: [jobId], references: [id])
+  admitCardId String?  @unique
+  admitCard   AdmitCard? @relation(fields: [admitCardId], references: [id])
+  resultId    String?  @unique
+  result      Result?  @relation(fields: [resultId], references: [id])
+  answerKeyId String?  @unique
+  answerKey   AnswerKey? @relation(fields: [answerKeyId], references: [id])
+  noticeId    String?  @unique
+  notice      Notice?  @relation(fields: [noticeId], references: [id])
+
+  versions    ArticleVersion[]
+  articleSources ArticleSource[]
+  seo         SeoMetadata?
+  reviews     ReviewAction[]
+  relatedFrom RelatedContent[] @relation("from")
+  relatedTo   RelatedContent[] @relation("to")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, status, publishedAt])
+  @@index([status])
+}
+
+model ArticleVersion {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version   Int
+  title     String
+  body      String?  @db.Text
+  snapshot  Json     // full snapshot of fields at this version
+  editedById String?
+  createdAt DateTime @default(now())
+
+  @@unique([articleId, version])
+  @@index([articleId])
+}
+
+model ArticleSource {
+  id        String   @id @default(cuid())
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  sourceName String
+  sourceUrl  String
+  isOfficial Boolean  @default(true)
+  detectedAt DateTime @default(now())
+
+  @@index([articleId])
+}
+
+model RelatedContent {
+  id         String  @id @default(cuid())
+  fromId     String
+  from       Article @relation("from", fields: [fromId], references: [id], onDelete: Cascade)
+  toId       String
+  to         Article @relation("to", fields: [toId], references: [id], onDelete: Cascade)
+  relation   String  // e.g. "exam", "syllabus", "result-of-job"
+  weight     Float   @default(1)
+  createdAt  DateTime @default(now())
+
+  @@unique([fromId, toId, relation])
+  @@index([fromId])
+}
+
+// ===========================================================================
+// REVIEW / AUDIT
+// ===========================================================================
+
+model ReviewAction {
+  id        String   @id @default(cuid())
+  articleId String?
+  article   Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  reviewerId String?
+  reviewer   User?    @relation(fields: [reviewerId], references: [id])
+  action     String   // APPROVE / REJECT / EDIT / SAVE_DRAFT / MARK_DUPLICATE
+  note       String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([articleId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ===========================================================================
+// QUESTION BANK / MOCK TESTS
+// ===========================================================================
+
+model Question {
+  id          String   @id @default(cuid())
+  examId      String?
+  exam        Exam?    @relation(fields: [examId], references: [id])
+  subject     String?
+  topic       String?
+  difficulty  String?  // EASY / MEDIUM / HARD
+  text        String   @db.Text
+  options     QuestionOption[]
+  explanation QuestionExplanation?
+  sourceUrl   String?
+  aiGenerated Boolean  @default(false)
+
+  mockLinks   MockTestQuestion[]
+  attempts    UserAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([examId, subject, topic])
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String   @db.Text
+  isCorrect  Boolean  @default(false)
+  orderIndex Int      @default(0)
+
+  @@index([questionId])
+}
+
+model QuestionExplanation {
+  id         String   @id @default(cuid())
+  questionId String   @unique
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String   @db.Text
+  aiGenerated Boolean @default(false)
+}
+
+model MockTest {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  examId      String?
+  exam        Exam?    @relation(fields: [examId], references: [id])
+  description String?  @db.Text
+  durationMin Int      @default(60)
+  totalMarks  Int      @default(0)
+  isPublished Boolean  @default(false)
+
+  questions   MockTestQuestion[]
+  attempts    UserAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MockTestQuestion {
+  id         String   @id @default(cuid())
+  mockTestId String
+  mockTest   MockTest @relation(fields: [mockTestId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  orderIndex Int      @default(0)
+  marks      Int      @default(1)
+
+  @@unique([mockTestId, questionId])
+  @@index([mockTestId])
+}
+
+// ===========================================================================
+// STUDENT ENGAGEMENT
+// ===========================================================================
+
+model ExamFollow {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examId    String
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, examId])
+  @@index([examId])
+}
+
+model Bookmark {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articleId  String?
+  entityType String   // article / job / exam
+  entityId   String
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId])
+}
+
+model UserAttempt {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mockTestId String?
+  mockTest   MockTest? @relation(fields: [mockTestId], references: [id], onDelete: SetNull)
+  questionId String?
+  question   Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  selectedOptionId String?
+  isCorrect  Boolean?
+  timeSpentSec Int?
+  score      Float?
+  totalScore Float?
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([mockTestId])
+}
+
+model UserPerformance {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject    String?
+  topic      String?
+  attempts   Int      @default(0)
+  correct    Int      @default(0)
+  accuracy   Float    @default(0)
+  isWeak     Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, subject, topic])
+  @@index([userId])
+}
+
+// ===========================================================================
+// NOTIFICATIONS
+// ===========================================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   NotificationChannel @default(WEB)
+  status    NotificationStatus  @default(QUEUED)
+  title     String
+  body      String?  @db.Text
+  url       String?
+  meta      Json?
+  sentAt    DateTime?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+// ===========================================================================
+// SEO
+// ===========================================================================
+
+model SeoMetadata {
+  id             String   @id @default(cuid())
+  articleId      String?  @unique
+  article        Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  path           String   @unique
+  title          String?
+  description    String?
+  canonical      String?
+  ogTitle        String?
+  ogDescription  String?
+  ogImage        String?
+  twitterCard    String?
+  jsonLd         Json?
+  noindex        Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Redirect {
+  id        String   @id @default(cuid())
+  fromPath  String   @unique
+  toPath    String
+  statusCode Int     @default(301)
+  createdAt DateTime @default(now())
+}
+
+// ===========================================================================
+// AUTOMATION CONTROL
+// ===========================================================================
+
+// Global + per-category automation switches (ADMIN → AUTOMATION SETTINGS).
+model AutomationSetting {
+  id                 String   @id @default(cuid())
+  // scope: "GLOBAL" or a ContentCategory value
+  scope              String   @unique
+  sourceMonitoring   Boolean  @default(true)
+  aiProcessing       Boolean  @default(true)
+  autoClassification Boolean  @default(true)
+  autoDraft          Boolean  @default(true)
+  autoPublish        Boolean  @default(false)
+  autoSeo            Boolean  @default(true)
+  autoSitemap        Boolean  @default(true)
+  notifications      Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// A unit of background work (crawl, extract, generate, publish...).
+model AutomationJob {
+  id         String   @id @default(cuid())
+  type       String   // CRAWL_SOURCE / PROCESS_ITEM / GENERATE_ARTICLE / PUBLISH / SITEMAP / NOTIFY
+  status     AutomationJobStatus @default(QUEUED)
+  payload    Json?
+  attempts   Int      @default(0)
+  maxAttempts Int     @default(3)
+  scheduledAt DateTime @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  error      String?  @db.Text
+  logs       AutomationLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([type])
+}
+
+model AutomationLog {
+  id       String   @id @default(cuid())
+  jobId    String?
+  job      AutomationJob? @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  level    String   @default("info") // info / warn / error
+  message  String   @db.Text
+  meta     Json?
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@index([level, createdAt])
+}
