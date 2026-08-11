@@ -39,6 +39,7 @@ enum ContentCategory {
   EXAM_PATTERN
   COUNSELLING
   DOCUMENT_VERIFICATION
+  CURRENT_AFFAIRS
   OTHER
 }
 
@@ -104,6 +105,7 @@ enum VerificationStatus {
   UNVERIFIED
   AUTO_EXTRACTED
   AI_ASSISTED
+  AI_VERIFIED
   HUMAN_VERIFIED
   SOURCE_CONFLICT
   NOT_AVAILABLE
@@ -274,6 +276,9 @@ model Source {
   lastItemsFound       Int?      @default(0)
   consecutiveFailures  Int       @default(0)
   lastError            String?
+  // 0..100 automatically-computed source reliability (crawl success, dedupe,
+  // official-domain signal). Feeds the auto-publish quality gate.
+  reliabilityScore     Int?
 
   crawls   SourceCrawl[]
   items    SourceItem[]
@@ -329,6 +334,7 @@ model SourceItem {
   stage         ProcessingStage    @default(DISCOVERED)
   category      ContentCategory?
   categoryScore Float?
+  qualityScore  Int?
   verification  VerificationStatus @default(UNVERIFIED)
 
   // Raw + extracted payloads
@@ -666,6 +672,10 @@ model Article {
   status      PublishStatus @default(DRAFT)
   publishedAt DateTime?
 
+  // Automation: 0..100 quality score and, when routed to review, the reason.
+  qualityScore Int?
+  reviewReason String?
+
   // Provenance & trust (displayed on the page)
   officialSource   String?
   officialSourceUrl String?
@@ -984,6 +994,10 @@ model AutomationSetting {
   autoSeo            Boolean  @default(true)
   autoSitemap        Boolean  @default(true)
   notifications      Boolean  @default(true)
+  // Minimum quality score (0..100) required to auto-publish this scope.
+  minPublishScore    Int      @default(80)
+  // Enable the (candidate-only) automatic source discovery worker.
+  sourceDiscovery    Boolean  @default(false)
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 }

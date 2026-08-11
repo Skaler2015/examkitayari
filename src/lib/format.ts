@@ -16,6 +16,7 @@ export const CATEGORY_META: Record<
   EXAM_PATTERN: { label: "Exam Pattern", path: "exam-pattern", badge: "secondary" },
   COUNSELLING: { label: "Counselling", path: "counselling", badge: "secondary" },
   DOCUMENT_VERIFICATION: { label: "Doc Verification", path: "document-verification", badge: "secondary" },
+  CURRENT_AFFAIRS: { label: "Current Affairs", path: "current-affairs", badge: "secondary" },
   OTHER: { label: "Update", path: "updates", badge: "secondary" },
 };
 
@@ -30,6 +31,7 @@ export const VERIFICATION_META: Record<
   UNVERIFIED: { label: "Unverified", badge: "secondary" },
   AUTO_EXTRACTED: { label: "Auto-extracted", badge: "warning" },
   AI_ASSISTED: { label: "AI-assisted draft", badge: "warning" },
+  AI_VERIFIED: { label: "AI verified", badge: "success" },
   HUMAN_VERIFIED: { label: "Human verified", badge: "success" },
   SOURCE_CONFLICT: { label: "Source conflict", badge: "danger" },
   NOT_AVAILABLE: { label: "Not available", badge: "secondary" },

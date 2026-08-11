@@ -10,6 +10,7 @@ export type EffectiveSettings = {
   autoSeo: boolean;
   autoSitemap: boolean;
   notifications: boolean;
+  minPublishScore: number;
 };
 
 const DEFAULTS: EffectiveSettings = {
@@ -17,10 +18,11 @@ const DEFAULTS: EffectiveSettings = {
   aiProcessing: true,
   autoClassification: true,
   autoDraft: true,
-  autoPublish: false, // safety: default to manual review
+  autoPublish: false, // per-category opt-in; the quality gate decides the rest
   autoSeo: true,
   autoSitemap: true,
   notifications: true,
+  minPublishScore: 80,
 };
 
 // Categories that must default to MANUAL REVIEW (never auto-publish).
@@ -53,6 +55,7 @@ export async function getEffectiveSettings(category?: ContentCategory): Promise<
     merged.autoSeo = row.autoSeo;
     merged.autoSitemap = row.autoSitemap;
     merged.notifications = row.notifications;
+    if (typeof row.minPublishScore === "number") merged.minPublishScore = row.minPublishScore;
   };
   apply(global);
   apply(specific);

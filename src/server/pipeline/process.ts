@@ -13,6 +13,10 @@ import { fetchPageText } from "@/server/crawler/html";
 import { downloadAndExtractPdf } from "@/server/crawler/pdf";
 import { classify } from "./classify";
 import { classifyWithAi } from "@/server/ai/classify";
+import { computeQualityScore } from "./scoring";
+import { computeSourceReliability } from "./reliability";
+import { validateExtraction } from "@/server/ai/validate";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { extractFor } from "./extract";
 import { findDuplicate } from "./dedupe";
 import { generateArticle } from "@/server/ai/content";
@@ -88,11 +92,28 @@ export async function processSourceItem(itemId: string): Promise<ProcessingStage
     }
     await prisma.sourceItem.update({ where: { id: item.id }, data: { stage: ProcessingStage.DEDUPED } });
 
-    // 5. Create the typed record (Job/AdmitCard/Result/AnswerKey/Notice).
+    // 5. Source reliability + AI validation (Agent 3) + quality score.
     const settings = await getEffectiveSettings(cls.category);
+    const reliability = await computeSourceReliability(item.sourceId);
+    const aiVal = settings.aiProcessing ? await validateExtraction(cls.category, fullText, extracted) : null;
+    const hasConflict = aiVal ? aiVal.supported === false || aiVal.conflicts.length > 0 : false;
+
+    const quality = computeQualityScore({
+      category: cls.category,
+      data: extracted,
+      sourceReliability: reliability,
+      categoryConfidence: cls.score,
+      isDuplicate: false, // dedupe already passed above
+      aiValidationConfidence: aiVal?.confidence ?? null,
+      hasConflict,
+      textLength: fullText.length,
+    });
+    await prisma.sourceItem.update({ where: { id: item.id }, data: { qualityScore: quality.score } });
+
+    // 6. Typed record (Job/AdmitCard/Result/AnswerKey/Notice).
     const typed = await createTypedRecord(item, cls.category, extracted, title);
 
-    // 6. AI DRAFT (or deterministic template).
+    // 7. AI DRAFT (or deterministic template). Body is sanitised before storage.
     const generated = settings.autoDraft
       ? await generateArticle({
           category: cls.category,
@@ -102,16 +123,38 @@ export async function processSourceItem(itemId: string): Promise<ProcessingStage
           officialSourceUrl: item.url,
         })
       : null;
+    const cleanBody = sanitizeHtml(generated?.body) || null;
+
+    const verification = hasConflict
+      ? VerificationStatus.SOURCE_CONFLICT
+      : aiVal?.supported
+        ? VerificationStatus.AI_VERIFIED
+        : generated?.aiGenerated
+          ? VerificationStatus.AI_ASSISTED
+          : VerificationStatus.AUTO_EXTRACTED;
 
     await prisma.sourceItem.update({
       where: { id: item.id },
-      data: {
-        stage: ProcessingStage.AI_PROCESSED,
-        verification: generated?.aiGenerated ? VerificationStatus.AI_ASSISTED : VerificationStatus.AUTO_EXTRACTED,
-      },
+      data: { stage: ProcessingStage.AI_PROCESSED, verification },
     });
 
-    // 7. Create Article draft.
+    // 8. AUTO-PUBLISH DECISION (automation by default; review is the exception).
+    const minScore = settings.minPublishScore ?? 80;
+    const canAuto =
+      settings.autoPublish &&
+      quality.score >= minScore &&
+      quality.requiredOk &&
+      quality.breakdown.urlValidation > 0 &&
+      !hasConflict;
+
+    const reviewReason = canAuto
+      ? null
+      : !settings.autoPublish
+        ? "Auto-publish disabled for this category"
+        : quality.reasons.length
+          ? quality.reasons.join("; ")
+          : `Quality ${quality.score} below threshold ${minScore}`;
+
     const slug = await uniqueSlug(item.title ?? title ?? "update", async (s) => {
       return (await prisma.article.count({ where: { slug: s } })) > 0;
     });
@@ -122,31 +165,33 @@ export async function processSourceItem(itemId: string): Promise<ProcessingStage
         category: cls.category,
         title: item.title ?? title ?? "Exam Update",
         shortSummary: generated?.shortSummary ?? null,
-        body: generated?.body ?? null,
+        body: cleanBody,
         faq: generated?.faq ?? undefined,
         importantPoints: generated?.importantPoints ?? [],
         aiGenerated: generated?.aiGenerated ?? false,
         officialSource: item.source.name,
         officialSourceUrl: item.url,
         sourceItemId: item.id,
-        verificationStatus: generated?.aiGenerated ? VerificationStatus.AI_ASSISTED : VerificationStatus.AUTO_EXTRACTED,
+        verificationStatus: verification,
+        qualityScore: quality.score,
+        reviewReason,
         status: PublishStatus.PENDING_REVIEW,
         ...typed.articleLink,
       },
     });
 
-    // Record the official source provenance row.
     await prisma.articleSource.create({
       data: { articleId: article.id, sourceName: item.source.name, sourceUrl: item.url, isOfficial: true },
     });
 
-    // 8. VALIDATE + decide publish path.
-    if (settings.autoPublish && cls.score >= 0.5) {
+    if (canAuto) {
       await publishArticle(article.id);
       await prisma.sourceItem.update({ where: { id: item.id }, data: { stage: ProcessingStage.PUBLISHED } });
+      log.info("Auto-published", { slug, score: quality.score, category: cls.category });
       return ProcessingStage.PUBLISHED;
     }
 
+    log.info("Routed to review", { slug, score: quality.score, reason: reviewReason });
     await prisma.sourceItem.update({ where: { id: item.id }, data: { stage: ProcessingStage.PENDING_REVIEW } });
     return ProcessingStage.PENDING_REVIEW;
   } catch (err) {

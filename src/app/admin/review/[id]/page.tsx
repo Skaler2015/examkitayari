@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui";
 import { CATEGORY_META, VERIFICATION_META, formatDateTime } from "@/lib/format";
+import { sanitizeHtml } from "@/lib/sanitize";
 import ReviewActions from "./ReviewActions";
 import EditForm from "./EditForm";
 
@@ -190,7 +191,7 @@ export default async function ReviewDetailPage({ params }: { params: { id: strin
               <p className="mb-1.5 text-sm font-medium">Body preview</p>
               <div
                 className="prose-article max-h-[28rem] overflow-auto rounded-md border p-3"
-                dangerouslySetInnerHTML={{ __html: article.body ?? "" }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(article.body) }}
               />
             </div>
           </CardContent>
